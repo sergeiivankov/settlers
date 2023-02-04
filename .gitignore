@@ -1,0 +1,3 @@
+server/certs
+server/target
+server/.env
