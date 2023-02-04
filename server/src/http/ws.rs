@@ -65,7 +65,7 @@ pub async fn ws(path: &str, mut req: Request<Incoming>) -> Result<Response<Full<
        .unwrap_or(false) == false
   || headers.get(SEC_WEBSOCKET_VERSION).map(|v| v == "13").unwrap_or(false) == false
   {
-    return create_status_response(StatusCode::NOT_FOUND)
+    return create_status_response(StatusCode::BAD_REQUEST)
   }
 
   let derived = derive_accept_key(key.unwrap().as_bytes());

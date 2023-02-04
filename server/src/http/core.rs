@@ -4,7 +4,7 @@ use hyper::{
   Request, Response, StatusCode, body::Incoming, server::conn::http1::Builder, service::service_fn
 };
 use lazy_static::initialize;
-use log::{ info, error };
+use log::{ debug, info, error };
 use std::{ marker::Unpin, net::SocketAddr };
 use tokio::{
   io::{ AsyncRead, AsyncWrite }, net::{ TcpListener, TcpStream },
@@ -95,7 +95,7 @@ async fn accept_connection(listener: &TcpListener) -> Option<TcpStream> {
   match listener.accept().await {
     Ok(connection) => Some(connection.0),
     Err(err) => {
-      error!("Accept TCP connection error: {}", err);
+      debug!("Accept TCP connection error: {}", err);
       None
     }
   }
@@ -107,7 +107,7 @@ where
 {
   let connection = Builder::new().serve_connection(stream, service_fn(handle_connection));
   let connection = connection.with_upgrades();
-  connection.await.unwrap_or_else(|err| error!("Handle HTTP connection error: {}", err));
+  connection.await.unwrap_or_else(|err| error!("Handle connection error: {}", err));
 }
 
 #[cfg(feature = "secure_server")]
@@ -136,7 +136,7 @@ async fn run(addr: SocketAddr) {
           let stream = match acceptor.accept(stream).await {
             Ok(stream) => stream,
             Err(err) => {
-              error!("Accept TLS connection error: {}", err);
+              debug!("Accept TLS connection error: {}", err);
               return
             }
           };

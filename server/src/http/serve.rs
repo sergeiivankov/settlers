@@ -2,7 +2,7 @@ use bytes::Bytes;
 use http_body_util::Full;
 use hyper::{ Response, StatusCode };
 use lazy_static::lazy_static;
-use log::{ debug, error };
+use log::debug;
 use std::{
   collections::HashMap, io::{ Error, ErrorKind }, path::{ MAIN_SEPARATOR, Component, Path, PathBuf }
 };
@@ -82,6 +82,7 @@ pub async fn serve(path: &str) -> Result<Response<Full<Bytes>>, String> {
     for component in Path::new(path).components() {
       match component {
         Component::Prefix(_) | Component::CurDir | Component::RootDir | Component::ParentDir => {
+          debug!("Found special path component {:?} in \"{}\"", component, path);
           return create_status_response(StatusCode::NOT_FOUND)
         },
         Component::Normal(c) => normalized.push(c)
@@ -94,7 +95,7 @@ pub async fn serve(path: &str) -> Result<Response<Full<Bytes>>, String> {
   let path = match path.to_str() {
     Some(path) => path,
     None => {
-      error!("Convert path \"{}\" to str error", path.display());
+      debug!("Convert path \"{}\" to str error", path.display());
       return create_status_response(StatusCode::INTERNAL_SERVER_ERROR)
     }
   };
