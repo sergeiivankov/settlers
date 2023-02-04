@@ -1,22 +1,24 @@
-use async_recursion::async_recursion;
 use bytes::Bytes;
 use http_body_util::Full;
 use hyper::{ Response, StatusCode };
 use lazy_static::lazy_static;
 use log::{ debug, error };
 use std::{
-  collections::HashMap, io::ErrorKind, path::{ MAIN_SEPARATOR, Component, Path, PathBuf }
+  collections::HashMap, io::{ Error, ErrorKind }, path::{ MAIN_SEPARATOR, Component, Path, PathBuf }
 };
-use tokio::{ fs::read, sync::Mutex };
+use tokio::fs::read;
 use crate::helpers::get_env;
 use super::helpers::{ prepare_check_path, return_result_response, create_status_response };
+
+#[cfg(feature = "public_caching")]
+use async_recursion::async_recursion;
+#[cfg(feature = "public_caching")]
+use tokio::sync::Mutex;
 
 lazy_static! {
   pub static ref PUBLIC_RESOURCES_PATH: String = prepare_check_path(
     get_env("SETTLERS_PUBLIC_RESOURCES_PATH"), false
   );
-
-  static ref RESOURCES_CACHE: Mutex<HashMap<String, Full<Bytes>>> = Mutex::new(HashMap::new());
 
   static ref MIME_TYPES: HashMap<&'static str, &'static str> = {
     let mut mime_types = HashMap::new();
@@ -29,7 +31,49 @@ lazy_static! {
   };
 }
 
+#[cfg(feature = "public_caching")]
+lazy_static! {
+  static ref RESOURCES_CACHE: Mutex<HashMap<String, Full<Bytes>>> = Mutex::new(HashMap::new());
+}
+
+fn get_full_file_path(path: &String) -> String {
+  format!("{}{}{}", *PUBLIC_RESOURCES_PATH, MAIN_SEPARATOR, path)
+}
+
+#[cfg(feature = "public_caching")]
 #[async_recursion]
+async fn get_file_body(path: String) -> Result<Full<Bytes>, Error> {
+  let mut cache = RESOURCES_CACHE.lock().await;
+
+  match cache.get(&path) {
+    Some(body) => Ok(body.clone()),
+    None => {
+      let full_path = get_full_file_path(&path);
+
+      match read(full_path).await {
+        Ok(content) => {
+          let body = Full::new(content.into());
+          cache.insert(path.clone(), body.clone());
+          drop(cache);
+
+          get_file_body(path).await
+        },
+        Err(err) => Err(err)
+      }
+    }
+  }
+}
+
+#[cfg(not(feature = "public_caching"))]
+async fn get_file_body(path: String) -> Result<Full<Bytes>, Error> {
+  let full_path = get_full_file_path(&path);
+
+  match read(full_path).await {
+    Ok(content) => Ok(Full::new(content.into())),
+    Err(err) => Err(err)
+  }
+}
+
 pub async fn serve(path: &str) -> Result<Response<Full<Bytes>>, String> {
   // Path analisis for special components exists
   let path = {
@@ -63,34 +107,17 @@ pub async fn serve(path: &str) -> Result<Response<Full<Bytes>>, String> {
   };
   let mime_type = MIME_TYPES.get(ext).unwrap_or(&"application/octet-stream");
 
-  let mut cache = RESOURCES_CACHE.lock().await;
+  match get_file_body(path).await {
+    Ok(body) => return_result_response(
+      Response::builder().header("Content-Type", *mime_type).body(body.clone())
+    ),
+    Err(err) => {
+      debug!("Read file error: {}", err);
 
-  match cache.get(&path) {
-    Some(body) => {
-      return_result_response(
-        Response::builder().header("Content-Type", *mime_type).body(body.clone())
-      )
-    },
-    None => {
-      let full_path = format!("{}{}{}", *PUBLIC_RESOURCES_PATH, MAIN_SEPARATOR, path);
-
-      match read(full_path).await {
-        Ok(content) => {
-          let body = Full::new(content.into());
-          cache.insert(path.clone(), body.clone());
-          drop(cache);
-
-          serve(&path).await
-        },
-        Err(err) => {
-          debug!("Read file error: {}", err);
-
-          create_status_response(match err.kind() {
-            ErrorKind::NotFound | ErrorKind::PermissionDenied => StatusCode::NOT_FOUND,
-            _ => StatusCode::INTERNAL_SERVER_ERROR
-          })
-        }
-      }
+      create_status_response(match err.kind() {
+        ErrorKind::NotFound | ErrorKind::PermissionDenied => StatusCode::NOT_FOUND,
+        _ => StatusCode::INTERNAL_SERVER_ERROR
+      })
     }
   }
 }
