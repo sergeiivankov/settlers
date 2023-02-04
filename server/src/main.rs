@@ -17,7 +17,7 @@ fn main() {
     Err(_) => info!("File with environment variables not found")
   };
 
-  let runtime = RuntimeBuilder::new_multi_thread().enable_io().enable_time().build()
+  let runtime = RuntimeBuilder::new_multi_thread().enable_io().build()
     .unwrap_or_else(|err| exit_with_error(format!("Create tokio runtime error: {}", err)));
 
   runtime.block_on(async {

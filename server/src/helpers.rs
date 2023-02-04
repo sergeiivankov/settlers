@@ -1,14 +1,10 @@
 use std::{ env::{ VarError, var }, process::exit };
 
-pub fn get_env(name: &str, required: bool) -> String {
+pub fn get_env(name: &str) -> String {
   match var(name) {
     Ok(value) => value,
     Err(VarError::NotPresent) => {
-      if required {
-        exit_with_error(format!("Required environment value \"{}\" not present", name))
-      } else {
-        String::new()
-      }
+      exit_with_error(format!("Required environment value \"{}\" not present", name))
     }
     Err(VarError::NotUnicode(os_string)) => {
       exit_with_error(format!(

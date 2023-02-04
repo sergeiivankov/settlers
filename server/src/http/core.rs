@@ -5,54 +5,34 @@ use hyper::{
 };
 use lazy_static::initialize;
 use log::{ info, error };
-use rustls_pemfile::{ certs, rsa_private_keys };
-use std::{ fs::File, io::BufReader, marker::Unpin, net::SocketAddr, sync::Arc };
+use std::{ marker::Unpin, net::SocketAddr };
 use tokio::{
   io::{ AsyncRead, AsyncWrite }, net::{ TcpListener, TcpStream },
-  signal::ctrl_c, task::spawn, select, sync::Mutex
+  signal::ctrl_c, task::spawn, select
 };
-use tokio_rustls::{ rustls::{ Certificate, PrivateKey, ServerConfig }, TlsAcceptor };
 use crate::helpers::{ exit_with_error, get_env };
 use super::{
   api::api,
-  helpers::{ CURRENT_PATH, prepare_check_path, create_status_response },
+  helpers::{ CURRENT_PATH, create_status_response },
   serve::{ PUBLIC_RESOURCES_PATH, serve },
   ws::ws
 };
 
-async fn handle_connection(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, String> {
-  let uri = req.uri().clone();
+#[cfg(feature = "secure_server")]
+use rustls_pemfile::{ certs, rsa_private_keys };
+#[cfg(feature = "secure_server")]
+use tokio_rustls::{ rustls::{ Certificate, PrivateKey, ServerConfig }, TlsAcceptor };
+#[cfg(feature = "secure_server")]
+use std::{ fs::File, io::BufReader, sync::Arc };
+#[cfg(feature = "secure_server")]
+use tokio::sync::Mutex;
+#[cfg(feature = "secure_server")]
+use super::helpers::prepare_check_path;
 
-  let path = match uri.path().get(1..) {
-    Some(path) => path,
-    None => ""
-  };
-
-  let (section, subpath) = {
-    match path.split_once("/") {
-      Some(parts) => parts,
-      None => if path == "" { ("public", "index.html") } else { (path, "") }
-    }
-  };
-
-  match section {
-    "public" => serve(subpath).await,
-    "api" => api(subpath, req).await,
-    "ws" => ws(subpath, req).await,
-    _ => create_status_response(StatusCode::NOT_FOUND)
-  }
-}
-
-fn load_secure_server_data() -> Option<(Vec<Certificate>, PrivateKey)> {
-  let cert_path_value = get_env("SETTLERS_CERT_PATH", false);
-  let key_path_value = get_env("SETTLERS_KEY_PATH", false);
-
-  if cert_path_value == "" || key_path_value == "" {
-    return None
-  }
-
-  let certs_path = prepare_check_path(cert_path_value, true);
-  let keys_path = prepare_check_path(key_path_value, true);
+#[cfg(feature = "secure_server")]
+fn load_secure_server_data() -> (Vec<Certificate>, PrivateKey) {
+  let certs_path = prepare_check_path(get_env("SETTLERS_CERT_PATH"), true);
+  let keys_path = prepare_check_path(get_env("SETTLERS_KEY_PATH"), true);
 
   let certs_file = File::open(&certs_path).unwrap_or_else(|err| {
     exit_with_error(format!("Open certs file \"{}\" error: {}", certs_path, err))
@@ -75,7 +55,30 @@ fn load_secure_server_data() -> Option<(Vec<Certificate>, PrivateKey)> {
     exit_with_error(format!("Keys file does not contain any key"))
   }).clone();
 
-  Some((certs, key))
+  (certs, key)
+}
+
+async fn handle_connection(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, String> {
+  let uri = req.uri().clone();
+
+  let path = match uri.path().get(1..) {
+    Some(path) => path,
+    None => ""
+  };
+
+  let (section, subpath) = {
+    match path.split_once("/") {
+      Some(parts) => parts,
+      None => if path == "" { ("public", "index.html") } else { (path, "") }
+    }
+  };
+
+  match section {
+    "public" => serve(subpath).await,
+    "api" => api(subpath, req).await,
+    "ws" => ws(subpath, req).await,
+    _ => create_status_response(StatusCode::NOT_FOUND)
+  }
 }
 
 async fn create_tcp_listener(addr: SocketAddr) -> TcpListener {
@@ -107,65 +110,73 @@ where
   connection.await.unwrap_or_else(|err| error!("Handle HTTP connection error: {}", err));
 }
 
+#[cfg(feature = "secure_server")]
+async fn run(addr: SocketAddr) {
+  let (certs, key) = load_secure_server_data();
+
+  let server_config = ServerConfig::builder()
+    .with_safe_defaults()
+    .with_no_client_auth()
+    .with_single_cert(certs, key)
+    .unwrap_or_else(|err| {
+      exit_with_error(format!("Create TLS server config error: {}", err))
+    });
+  let acceptor = Arc::new(Mutex::new(TlsAcceptor::from(Arc::new(server_config))));
+
+  let listener = create_tcp_listener(addr).await;
+
+  loop {
+    select! {
+      Some(stream) = accept_connection(&listener) => {
+        let acceptor_clone = acceptor.clone();
+
+        spawn(async move {
+          let acceptor = acceptor_clone.lock().await;
+
+          let stream = match acceptor.accept(stream).await {
+            Ok(stream) => stream,
+            Err(err) => {
+              error!("Accept TLS connection error: {}", err);
+              return
+            }
+          };
+
+          drop(acceptor);
+
+          serve_connection(stream).await
+        });
+      },
+      _ = ctrl_c() => break
+    }
+  }
+}
+
+#[cfg(not(feature = "secure_server"))]
+async fn run(addr: SocketAddr) {
+  let listener = create_tcp_listener(addr).await;
+
+  loop {
+    select! {
+      Some(stream) = accept_connection(&listener) => {
+        spawn(serve_connection(stream));
+      },
+      _ = ctrl_c() => break
+    }
+  }
+}
+
 pub async fn start() {
   // Need to check for errors lazy static refs before server start
   initialize(&CURRENT_PATH);
   initialize(&PUBLIC_RESOURCES_PATH);
 
-  let addr_string = get_env("SETTLERS_BIND_ADDR", true);
+  let addr_string = get_env("SETTLERS_BIND_ADDR");
 
   let addr: SocketAddr = addr_string.parse().unwrap_or_else(|err| {
     exit_with_error(format!("Parse bind address \"{}\" error: {}", addr_string, err))
   });
 
-  let secure_server_data = load_secure_server_data();
-
-  let listener = create_tcp_listener(addr).await;
-
-  if let Some((certs, key)) = secure_server_data {
-    let server_config = ServerConfig::builder()
-      .with_safe_defaults()
-      .with_no_client_auth()
-      .with_single_cert(certs, key)
-      .unwrap_or_else(|err| {
-        exit_with_error(format!("Create TLS server config error: {}", err))
-      });
-    let acceptor = Arc::new(Mutex::new(TlsAcceptor::from(Arc::new(server_config))));
-
-    loop {
-      select! {
-        Some(stream) = accept_connection(&listener) => {
-          let acceptor_clone = acceptor.clone();
-
-          spawn(async move {
-            let acceptor = acceptor_clone.lock().await;
-
-            let stream = match acceptor.accept(stream).await {
-              Ok(stream) => stream,
-              Err(err) => {
-                error!("Accept TLS connection error: {}", err);
-                return
-              }
-            };
-
-            drop(acceptor);
-
-            serve_connection(stream).await
-          });
-        },
-        _ = ctrl_c() => break
-      }
-    }
-  } else {
-    loop {
-      select! {
-        Some(stream) = accept_connection(&listener) => {
-          spawn(serve_connection(stream));
-        },
-        _ = ctrl_c() => break
-      }
-    }
-  }
+  run(addr).await;
 
   // TODO: server graceful shutdown
   // In hyper-1.0.0-rc.2 not resolved some issues related with

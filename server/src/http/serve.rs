@@ -13,7 +13,7 @@ use super::helpers::{ prepare_check_path, return_result_response, create_status_
 
 lazy_static! {
   pub static ref PUBLIC_RESOURCES_PATH: String = prepare_check_path(
-    get_env("SETTLERS_PUBLIC_RESOURCES_PATH", true), false
+    get_env("SETTLERS_PUBLIC_RESOURCES_PATH"), false
   );
 
   static ref RESOURCES_CACHE: Mutex<HashMap<String, Full<Bytes>>> = Mutex::new(HashMap::new());
