@@ -18,6 +18,9 @@ use super::{
   ws::ws
 };
 
+#[cfg(feature = "public_resources_caching")]
+use super::serve::PUBLIC_RESOURCES_CACHE;
+
 #[cfg(feature = "secure_server")]
 use rustls_pemfile::{ certs, rsa_private_keys };
 #[cfg(feature = "secure_server")]
@@ -74,7 +77,7 @@ async fn handle_connection(req: Request<Incoming>) -> Result<Response<Full<Bytes
   };
 
   match section {
-    "public" => serve(subpath).await,
+    "public" => serve(subpath, req).await,
     "api" => api(subpath, req).await,
     "ws" => ws(subpath, req).await,
     _ => create_status_response(StatusCode::NOT_FOUND)
@@ -111,7 +114,7 @@ where
 }
 
 #[cfg(feature = "secure_server")]
-async fn run(addr: SocketAddr) {
+fn create_additional_acceptor() -> Arc<Mutex<TlsAcceptor>> {
   let (certs, key) = load_secure_server_data();
 
   let server_config = ServerConfig::builder()
@@ -121,10 +124,15 @@ async fn run(addr: SocketAddr) {
     .unwrap_or_else(|err| {
       exit_with_error(format!("Create TLS server config error: {}", err))
     });
-  let acceptor = Arc::new(Mutex::new(TlsAcceptor::from(Arc::new(server_config))));
 
-  let listener = create_tcp_listener(addr).await;
+  Arc::new(Mutex::new(TlsAcceptor::from(Arc::new(server_config))))
+}
 
+#[cfg(not(feature = "secure_server"))]
+fn create_additional_acceptor() {}
+
+#[cfg(feature = "secure_server")]
+async fn run(listener: TcpListener, acceptor: Arc<Mutex<TlsAcceptor>>) {
   loop {
     select! {
       Some(stream) = accept_connection(&listener) => {
@@ -152,9 +160,7 @@ async fn run(addr: SocketAddr) {
 }
 
 #[cfg(not(feature = "secure_server"))]
-async fn run(addr: SocketAddr) {
-  let listener = create_tcp_listener(addr).await;
-
+async fn run(listener: TcpListener, _acceptor: ()) {
   loop {
     select! {
       Some(stream) = accept_connection(&listener) => {
@@ -176,7 +182,14 @@ pub async fn start() {
     exit_with_error(format!("Parse bind address \"{}\" error: {}", addr_string, err))
   });
 
-  run(addr).await;
+  let additional_acceptor = create_additional_acceptor();
+  let listener = create_tcp_listener(addr).await;
+
+  // Initialize public resources cache before server start accept connections
+  #[cfg(feature = "public_resources_caching")]
+  initialize(&PUBLIC_RESOURCES_CACHE);
+
+  run(listener, additional_acceptor).await;
 
   // TODO: server graceful shutdown
   // In hyper-1.0.0-rc.2 not resolved some issues related with
