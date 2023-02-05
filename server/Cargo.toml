@@ -21,5 +21,5 @@ tokio-tungstenite = "0.18.0"
 walkdir = { version = "2.3.2", optional = true }
 
 [features]
-public_resources_caching = ["dep:hex", "dep:sha-1", "dep:walkdir"]
-secure_server = ["dep:rustls-pemfile", "dep:tokio-rustls"]
+public_resources_caching = ["hex", "sha-1", "walkdir"]
+secure_server = ["rustls-pemfile", "tokio-rustls"]
