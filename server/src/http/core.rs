@@ -61,7 +61,9 @@ fn load_secure_server_data() -> (Vec<Certificate>, PrivateKey) {
   (certs, key)
 }
 
-async fn handle_connection(req: Request<Incoming>) -> Result<Response<Full<Bytes>>, String> {
+async fn handle_connection(
+  req: Request<Incoming>, addr: SocketAddr
+) -> Result<Response<Full<Bytes>>, String> {
   let uri = req.uri().clone();
 
   let path = match uri.path().get(1..) {
@@ -79,7 +81,7 @@ async fn handle_connection(req: Request<Incoming>) -> Result<Response<Full<Bytes
   match section {
     "public" => serve(subpath, req).await,
     "api" => api(subpath, req).await,
-    "ws" => ws(subpath, req).await,
+    "ws" => ws(subpath, req, addr).await,
     _ => create_status_response(StatusCode::NOT_FOUND)
   }
 }
@@ -94,9 +96,9 @@ async fn create_tcp_listener(addr: SocketAddr) -> TcpListener {
   listener
 }
 
-async fn accept_connection(listener: &TcpListener) -> Option<TcpStream> {
+async fn accept_connection(listener: &TcpListener) -> Option<(TcpStream, SocketAddr)> {
   match listener.accept().await {
-    Ok(connection) => Some(connection.0),
+    Ok(connection) => Some(connection),
     Err(err) => {
       debug!("Accept TCP connection error: {}", err);
       None
@@ -104,11 +106,13 @@ async fn accept_connection(listener: &TcpListener) -> Option<TcpStream> {
   }
 }
 
-async fn serve_connection<I>(stream: I)
+async fn serve_connection<I>(stream: I, addr: SocketAddr)
 where
   I: AsyncRead + AsyncWrite + Unpin + Send + 'static
 {
-  let connection = Builder::new().serve_connection(stream, service_fn(handle_connection));
+  let connection = Builder::new().serve_connection(
+    stream, service_fn(move |req| handle_connection(req, addr))
+  );
   let connection = connection.with_upgrades();
   connection.await.unwrap_or_else(|err| error!("Handle connection error: {}", err));
 }
@@ -135,7 +139,7 @@ fn create_additional_acceptor() {}
 async fn run(listener: TcpListener, acceptor: Arc<Mutex<TlsAcceptor>>) {
   loop {
     select! {
-      Some(stream) = accept_connection(&listener) => {
+      Some((stream, addr)) = accept_connection(&listener) => {
         let acceptor_clone = acceptor.clone();
 
         spawn(async move {
@@ -151,7 +155,7 @@ async fn run(listener: TcpListener, acceptor: Arc<Mutex<TlsAcceptor>>) {
 
           drop(acceptor);
 
-          serve_connection(stream).await
+          serve_connection(stream, addr).await
         });
       },
       _ = ctrl_c() => break
@@ -163,8 +167,8 @@ async fn run(listener: TcpListener, acceptor: Arc<Mutex<TlsAcceptor>>) {
 async fn run(listener: TcpListener, _acceptor: ()) {
   loop {
     select! {
-      Some(stream) = accept_connection(&listener) => {
-        spawn(serve_connection(stream));
+      Some((stream, addr)) = accept_connection(&listener) => {
+        spawn(serve_connection(stream, addr));
       },
       _ = ctrl_c() => break
     }

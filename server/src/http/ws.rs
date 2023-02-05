@@ -10,6 +10,7 @@ use hyper::{
   upgrade::{ Upgraded, on }
 };
 use log::debug;
+use std::net::SocketAddr;
 use tokio::task::spawn;
 use tokio_tungstenite::{
   WebSocketStream, tungstenite::{ handshake::derive_accept_key, protocol::Role }
@@ -26,7 +27,7 @@ fn get_header_str(name: HeaderName, headers: &HeaderMap) -> Option<&str> {
   }
 }
 
-async fn handle_connection(stream: WebSocketStream<Upgraded>) {
+async fn handle_connection(stream: WebSocketStream<Upgraded>, _addr: SocketAddr) {
   let (mut write, mut read) = stream.split();
 
   while let Some(result) = read.next().await {
@@ -48,7 +49,9 @@ async fn handle_connection(stream: WebSocketStream<Upgraded>) {
   }
 }
 
-pub async fn ws(path: &str, mut req: Request<Incoming>) -> Result<Response<Full<Bytes>>, String> {
+pub async fn ws(
+  path: &str, mut req: Request<Incoming>, addr: SocketAddr
+) -> Result<Response<Full<Bytes>>, String> {
   let version = req.version();
   let headers = req.headers();
   let key = headers.get(SEC_WEBSOCKET_KEY);
@@ -65,6 +68,7 @@ pub async fn ws(path: &str, mut req: Request<Incoming>) -> Result<Response<Full<
        .unwrap_or(false) == false
   || headers.get(SEC_WEBSOCKET_VERSION).map(|v| v == "13").unwrap_or(false) == false
   {
+    debug!("Check creating WS connection error: {:?}", req);
     return create_status_response(StatusCode::BAD_REQUEST)
   }
 
@@ -73,7 +77,7 @@ pub async fn ws(path: &str, mut req: Request<Incoming>) -> Result<Response<Full<
   spawn(async move {
     match on(&mut req).await {
       Ok(upgraded) => handle_connection(
-        WebSocketStream::from_raw_socket(upgraded, Role::Server, None).await
+        WebSocketStream::from_raw_socket(upgraded, Role::Server, None).await, addr
       ).await,
       Err(err) => debug!("Upgrade HTTP connection error: {}", err)
     }
