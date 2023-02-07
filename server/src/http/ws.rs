@@ -9,12 +9,13 @@ use hyper::{
   },
   upgrade::{ Upgraded, on }
 };
-use log::debug;
-use std::net::SocketAddr;
-use tokio::task::spawn;
+use log::{ debug, error };
+use std::sync::Arc;
+use tokio::{ sync::Mutex, task::spawn, select };
 use tokio_tungstenite::{
-  WebSocketStream, tungstenite::{ handshake::derive_accept_key, protocol::Role }
+  WebSocketStream, tungstenite::{ handshake::derive_accept_key, protocol::Role, Error, Message }
 };
+use crate::communicator::Communicator;
 use super::helpers::{ create_status_response, return_result_response };
 
 fn get_header_str(name: HeaderName, headers: &HeaderMap) -> Option<&str> {
@@ -27,30 +28,81 @@ fn get_header_str(name: HeaderName, headers: &HeaderMap) -> Option<&str> {
   }
 }
 
-async fn handle_connection(stream: WebSocketStream<Upgraded>, _addr: SocketAddr) {
+async fn handle_connection(
+  stream: WebSocketStream<Upgraded>, communicator: Arc<Mutex<Communicator>>
+) {
+  let mut communicator_lock = communicator.lock().await;
+  let (id, sender, mut receiver) = communicator_lock.add();
+  drop(communicator_lock);
+
   let (mut write, mut read) = stream.split();
 
-  while let Some(result) = read.next().await {
-    let message = match result {
-      Ok(message) => message,
-      Err(err) => {
-        debug!("Receive WS message error: {}", err);
-        return
+  loop {
+    select! {
+      from = read.next() => {
+        match from {
+          Some(result) => match result {
+            Ok(message) => match message {
+              Message::Text(data) => match sender.send((id, data)) {
+                Ok(_) => {},
+                Err(err) => {
+                  error!("Send from peer {} error: {}", id, err);
+                  break
+                }
+              },
+              _ => {}
+            },
+            Err(err) => {
+              debug!("Receive WS message {} error: {}", id, err);
+              break
+            }
+          },
+          None => break
+        }
+      },
+      to = receiver.recv() => {
+        match to {
+          Some(data) => {
+            match write.send(Message::Text(data)).await {
+              Ok(_) => {},
+              Err(err) => {
+                debug!("Send WS message {} error: {}", id, err);
+                break
+              }
+            }
+          },
+          None => {
+            error!("Sender to peer closed before it remove from communicator {}", id);
+            break
+          }
+        }
       }
-    };
+    }
+  }
 
-    match write.send(message).await {
-      Ok(_) => {},
-      Err(err) => {
-        debug!("Send WS message error: {}", err);
-        return
-      }
+  let mut communicator_lock = communicator.lock().await;
+  communicator_lock.remove(&id);
+  drop(communicator_lock);
+
+  let mut stream = match write.reunite(read) {
+    Ok(stream) => stream,
+    Err(err) => {
+      error!("Reunite WS stream parts {} error: {}", id, err);
+      return
+    }
+  };
+
+  match stream.close(None).await {
+    Ok(_) => {},
+    Err(err) => match err {
+      Error::ConnectionClosed => {},
+      _ => error!("Close WS stream {} error: {}", id, err)
     }
   }
 }
 
 pub async fn ws(
-  path: &str, mut req: Request<Incoming>, addr: SocketAddr
+  path: &str, mut req: Request<Incoming>, communicator: Arc<Mutex<Communicator>>
 ) -> Result<Response<Full<Bytes>>, String> {
   let version = req.version();
   let headers = req.headers();
@@ -77,7 +129,7 @@ pub async fn ws(
   spawn(async move {
     match on(&mut req).await {
       Ok(upgraded) => handle_connection(
-        WebSocketStream::from_raw_socket(upgraded, Role::Server, None).await, addr
+        WebSocketStream::from_raw_socket(upgraded, Role::Server, None).await, communicator
       ).await,
       Err(err) => debug!("Upgrade HTTP connection error: {}", err)
     }

@@ -5,12 +5,12 @@ use hyper::{
 };
 use lazy_static::initialize;
 use log::{ debug, info, error };
-use std::{ marker::Unpin, net::SocketAddr };
+use std::{ marker::Unpin, net::SocketAddr, sync::Arc };
 use tokio::{
   io::{ AsyncRead, AsyncWrite }, net::{ TcpListener, TcpStream },
-  signal::ctrl_c, task::spawn, select
+  sync::{ oneshot::Receiver, Mutex }, task::spawn, select
 };
-use crate::helpers::{ exit_with_error, get_env };
+use crate::{ communicator::Communicator, helpers::{ exit_with_error, get_env } };
 use super::{
   api::api,
   helpers::{ CURRENT_PATH, create_status_response },
@@ -62,7 +62,7 @@ fn load_secure_server_data() -> (Vec<Certificate>, PrivateKey) {
 }
 
 async fn handle_connection(
-  req: Request<Incoming>, addr: SocketAddr
+  req: Request<Incoming>, communicator: Arc<Mutex<Communicator>>
 ) -> Result<Response<Full<Bytes>>, String> {
   let uri = req.uri().clone();
 
@@ -81,7 +81,7 @@ async fn handle_connection(
   match section {
     "public" => serve(subpath, req).await,
     "api" => api(subpath, req).await,
-    "ws" => ws(subpath, req, addr).await,
+    "ws" => ws(subpath, req, communicator).await,
     _ => create_status_response(StatusCode::NOT_FOUND)
   }
 }
@@ -106,12 +106,12 @@ async fn accept_connection(listener: &TcpListener) -> Option<(TcpStream, SocketA
   }
 }
 
-async fn serve_connection<I>(stream: I, addr: SocketAddr)
+async fn serve_connection<I>(stream: I, communicator: Arc<Mutex<Communicator>>)
 where
   I: AsyncRead + AsyncWrite + Unpin + Send + 'static
 {
   let connection = Builder::new().serve_connection(
-    stream, service_fn(move |req| handle_connection(req, addr))
+    stream, service_fn(move |req| handle_connection(req, communicator.clone()))
   );
   let connection = connection.with_upgrades();
   connection.await.unwrap_or_else(|err| error!("Handle connection error: {}", err));
@@ -136,10 +136,13 @@ fn create_additional_acceptor() -> Arc<Mutex<TlsAcceptor>> {
 fn create_additional_acceptor() {}
 
 #[cfg(feature = "secure_server")]
-async fn run(listener: TcpListener, acceptor: Arc<Mutex<TlsAcceptor>>) {
+async fn run(
+  listener: TcpListener, communicator: Arc<Mutex<Communicator>>,
+  acceptor: Arc<Mutex<TlsAcceptor>>, mut stop_receiver: Receiver<()>
+) {
   loop {
     select! {
-      Some((stream, addr)) = accept_connection(&listener) => {
+      Some((stream, _)) = accept_connection(&listener) => {
         let acceptor_clone = acceptor.clone();
 
         spawn(async move {
@@ -155,27 +158,36 @@ async fn run(listener: TcpListener, acceptor: Arc<Mutex<TlsAcceptor>>) {
 
           drop(acceptor);
 
-          serve_connection(stream, addr).await
+          serve_connection(stream, communicator.clone()).await
         });
       },
-      _ = ctrl_c() => break
+      _ = &mut stop_receiver => {
+        debug!("Graceful http shutdown");
+        break
+      }
     }
   }
 }
 
 #[cfg(not(feature = "secure_server"))]
-async fn run(listener: TcpListener, _acceptor: ()) {
+async fn run(
+  listener: TcpListener, communicator: Arc<Mutex<Communicator>>,
+  _acceptor: (), mut stop_receiver: Receiver<()>
+) {
   loop {
     select! {
-      Some((stream, addr)) = accept_connection(&listener) => {
-        spawn(serve_connection(stream, addr));
+      Some((stream, _)) = accept_connection(&listener) => {
+        spawn(serve_connection(stream, communicator.clone()));
       },
-      _ = ctrl_c() => break
+      _ = &mut stop_receiver => {
+        debug!("Graceful http shutdown");
+        break
+      }
     }
   }
 }
 
-pub async fn start() {
+pub async fn start(communicator: Arc<Mutex<Communicator>>, stop_receiver: Receiver<()>) {
   // Need to check for errors lazy static refs before server start
   initialize(&CURRENT_PATH);
   initialize(&PUBLIC_RESOURCES_PATH);
@@ -193,7 +205,7 @@ pub async fn start() {
   #[cfg(feature = "public_resources_caching")]
   initialize(&PUBLIC_RESOURCES_CACHE);
 
-  run(listener, additional_acceptor).await;
+  run(listener, communicator, additional_acceptor, stop_receiver).await;
 
   // TODO: server graceful shutdown
   // In hyper-1.0.0-rc.2 not resolved some issues related with

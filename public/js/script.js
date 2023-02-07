@@ -3,13 +3,15 @@ window.addEventListener('load', () => {
     fetch('/api/test').then(res => res.text()).then(text => alert(text));
   });
 
-  document.querySelector('.js-test-ws').addEventListener('click', () => {
-    let socket = new WebSocket(
+  let socket = null;
+
+  document.querySelector('.js-open-ws').addEventListener('click', () => {
+    socket = new WebSocket(
       `ws${location.protocol === 'https:' ? 's' : ''}://${location.host}/ws`
     );
 
     socket.onopen = () => {
-      socket.send("My name is John");
+      alert('Socket opened');
     };
 
     socket.onmessage = e => {
@@ -27,5 +29,16 @@ window.addEventListener('load', () => {
     socket.onerror = err => {
       console.log(err);
     };
+  });
+
+  document.querySelector('.js-send-ws').addEventListener('click', () => {
+    if(!socket) return alert('Socket not opened');
+    socket.send("My name is John");
+  });
+
+  document.querySelector('.js-close-ws').addEventListener('click', () => {
+    if(!socket) return alert('Socket not opened');
+    socket.close();
+    socket = null;
   });
 });
