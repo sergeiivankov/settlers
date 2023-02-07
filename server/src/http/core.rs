@@ -26,9 +26,7 @@ use rustls_pemfile::{ certs, rsa_private_keys };
 #[cfg(feature = "secure_server")]
 use tokio_rustls::{ rustls::{ Certificate, PrivateKey, ServerConfig }, TlsAcceptor };
 #[cfg(feature = "secure_server")]
-use std::{ fs::File, io::BufReader, sync::Arc };
-#[cfg(feature = "secure_server")]
-use tokio::sync::Mutex;
+use std::{ fs::File, io::BufReader };
 #[cfg(feature = "secure_server")]
 use super::helpers::prepare_check_path;
 
@@ -144,6 +142,7 @@ async fn run(
     select! {
       Some((stream, _)) = accept_connection(&listener) => {
         let acceptor_clone = acceptor.clone();
+        let communicator_clone = communicator.clone();
 
         spawn(async move {
           let acceptor = acceptor_clone.lock().await;
@@ -158,7 +157,7 @@ async fn run(
 
           drop(acceptor);
 
-          serve_connection(stream, communicator.clone()).await
+          serve_connection(stream, communicator_clone).await
         });
       },
       _ = &mut stop_receiver => {
