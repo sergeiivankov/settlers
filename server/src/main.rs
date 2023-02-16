@@ -1,11 +1,15 @@
 use dotenv::dotenv;
 use env_logger::{ Builder as EnvLoggerBuilder, Env };
 use log::{ LevelFilter, debug, error, info };
+use sea_orm::{ ConnectOptions, Database };
+use sea_orm_migration::MigratorTrait;
+use std::time::Duration;
 use tokio::{
   runtime::Builder as RuntimeBuilder, signal::ctrl_c, sync::oneshot::channel, join, spawn
 };
 use crate::{
-  communicator::Communicator, helpers::exit_with_error, http::start, intermedium::Intermedium
+  communicator::Communicator, db::Migrator, helpers::{ exit_with_error, get_env },
+  http::start, intermedium::Intermedium
 };
 
 fn main() {
@@ -21,10 +25,29 @@ fn main() {
     Err(_) => info!("File with environment variables not found")
   };
 
-  let runtime = RuntimeBuilder::new_multi_thread().enable_io().build()
+  let runtime = RuntimeBuilder::new_multi_thread().enable_io().enable_time().build()
     .unwrap_or_else(|err| exit_with_error(format!("Create tokio runtime error: {}", err)));
 
   runtime.block_on(async {
+    let db_connect_options = ConnectOptions::new(get_env("SETTLERS_DB_URL"))
+      .max_connections(32)
+      .min_connections(2)
+      .connect_timeout(Duration::from_secs(5))
+      .acquire_timeout(Duration::from_secs(5))
+      .idle_timeout(Duration::from_secs(10))
+      .max_lifetime(Duration::from_secs(10))
+      .to_owned();
+
+    let db = match Database::connect(db_connect_options).await {
+      Ok(connection) => connection,
+      Err(err) => exit_with_error(format!("Database connect error: {}", err))
+    };
+
+    match Migrator::up(&db, None).await {
+      Ok(_) => {},
+      Err(err) => exit_with_error(format!("Database migration error: {}", err))
+    };
+
     let (intermedium_stop_sender, intermedium_stop_receiver) = channel::<()>();
     let (http_stop_sender, http_stop_receiver) = channel::<()>();
 
@@ -76,6 +99,7 @@ fn main() {
 }
 
 mod communicator;
+mod db;
 mod helpers;
 mod http;
 mod intermedium;

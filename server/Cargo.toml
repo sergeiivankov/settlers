@@ -15,6 +15,9 @@ hyper = { version = "1.0.0-rc.2", features = ["server", "http1"] }
 lazy_static = "1.4.0"
 log = { version = "0.4.17", features = ["max_level_debug", "release_max_level_error"] }
 rustls-pemfile = { version = "1.0.2", optional = true }
+sea-orm = { version = "0.11.0", default-features = false, features = ["macros", "runtime-tokio-rustls"] }
+sea-orm-migration = { version = "0.11.0", default-features = false, features = ["runtime-tokio-rustls"] }
+sea-query = "0.28.3"
 sha-1 = { version = "0.10.1", optional = true }
 tokio = { version = "1.24.2", features = ["rt-multi-thread", "net", "fs", "signal", "sync", "macros"] }
 tokio-rustls = { version = "0.23.4", features = ["dangerous_configuration"], optional = true }
@@ -22,5 +25,9 @@ tokio-tungstenite = "0.18.0"
 walkdir = { version = "2.3.2", optional = true }
 
 [features]
+default = ["db_sqlite"]
+db_mysql = ["sea-orm/sqlx-mysql", "sea-orm-migration/sqlx-mysql"]
+db_postgres = ["sea-orm/sqlx-postgres", "sea-orm-migration/sqlx-postgres"]
+db_sqlite = ["sea-orm/sqlx-sqlite", "sea-orm-migration/sqlx-sqlite"]
 public_resources_caching = ["hex", "sha-1", "walkdir"]
 secure_server = ["rustls-pemfile", "tokio-rustls"]
