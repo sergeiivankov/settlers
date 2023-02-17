@@ -1,3 +1,10 @@
+#[cfg(not(any(
+  feature = "db_mysql",
+  feature = "db_postgres",
+  feature = "db_sqlite"
+)))]
+compile_error!("Using one of `db_...` features is required");
+
 use dotenv::dotenv;
 use env_logger::{ Builder as EnvLoggerBuilder, Env };
 use lazy_static::initialize;
