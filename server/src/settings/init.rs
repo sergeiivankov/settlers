@@ -52,10 +52,9 @@ fn try_add_file_source(
     path
   };
 
-  let path_str = match path.to_str() {
-    Some(path_str) => path_str,
-    None => exit_with_error(format!("Convert path \"{}\" to str error", path.display()))
-  };
+  let path_str = path.to_str().unwrap_or_else(|| {
+    exit_with_error(format!("Convert path \"{}\" to str error", path.display()))
+  });
 
   info!("Config source added \"{}\"", path_str);
   builder.add_source(File::with_name(path_str))
@@ -65,10 +64,9 @@ fn check(settings: &mut Settings) {
   settings.public_resources_path = prepare_check_path(&settings.public_resources_path, false);
 
   #[cfg(feature = "secure_server")]
-  {
-    settings.secure_server.cert_path = prepare_check_path(&settings.secure_server.cert_path, true);
-    settings.secure_server.key_path = prepare_check_path(&settings.secure_server.key_path, true);
-  }
+  (settings.secure_server.cert_path = prepare_check_path(&settings.secure_server.cert_path, true));
+  #[cfg(feature = "secure_server")]
+  (settings.secure_server.key_path = prepare_check_path(&settings.secure_server.key_path, true));
 }
 
 pub fn init() -> Settings {
