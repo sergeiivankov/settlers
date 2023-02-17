@@ -1,6 +1,10 @@
-# Settlers Server
+# Documentation
 
-## Features
+TODO:
+- Describe build system, all features, build commands examples
+- Describe server configuration, config file paramenters, replace parameters by environment variables
+
+## Server features
 
 - `db_mysql` - using MySQL database for store data
 
