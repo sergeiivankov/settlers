@@ -1,5 +1,5 @@
 use lazy_static::lazy_static;
-use std::{ env::current_dir, path::{ Path, PathBuf }, process::exit };
+use std::{ env::current_dir, path::PathBuf, process::exit };
 
 lazy_static! {
   pub static ref CURRENT_PATH: PathBuf = current_dir()
@@ -12,17 +12,17 @@ pub fn exit_with_error(error: String) -> ! {
 }
 
 pub fn prepare_check_path(path_string: &String, must_be_file: bool) -> String {
-  let mut path = Path::new(&path_string);
+  let mut path = PathBuf::from(&path_string);
 
-  let mut path_absolute: PathBuf;
-  if path.is_relative() {
-    path_absolute = CURRENT_PATH.clone();
-    path_absolute.push(path_string);
-    path = Path::new(&path_absolute);
-  }
+  path = if path.is_relative() {
+    CURRENT_PATH.clone().join(path_string)
+  } else {
+    path
+  };
 
-  // In my cases, always return NotFound error kind, so canonicalize - it also a check for existence
-  let path = path.canonicalize().unwrap_or_else(|_| {
+  // Return NotFound error kind for non-existent file,
+  // so canonicalize - it also a check for existence
+  path = path.canonicalize().unwrap_or_else(|_| {
     exit_with_error(format!("Path \"{}\" not exists", path.display()))
   });
 
