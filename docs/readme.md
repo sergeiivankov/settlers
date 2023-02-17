@@ -2,7 +2,7 @@
 
 TODO:
 - Describe build system, all features, build commands examples
-- Describe server configuration, config file paramenters, replace parameters by environment variables
+- Describe server configuration, config file paramenters, replace parameters by environment variables, config file places (parents of current dir, system user config folder)
 
 ## Server features
 

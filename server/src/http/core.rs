@@ -3,21 +3,17 @@ use http_body_util::Full;
 use hyper::{
   Request, Response, StatusCode, body::Incoming, server::conn::http1::Builder, service::service_fn
 };
-use lazy_static::initialize;
 use log::{ debug, info, error };
 use std::{ marker::Unpin, net::SocketAddr, sync::Arc };
 use tokio::{
   io::{ AsyncRead, AsyncWrite }, net::{ TcpListener, TcpStream },
   sync::{ oneshot::Receiver, Mutex }, task::spawn, select
 };
-use crate::{ communicator::Communicator, helpers::{ exit_with_error, get_env } };
-use super::{
-  api::api,
-  helpers::{ CURRENT_PATH, create_status_response },
-  serve::{ PUBLIC_RESOURCES_PATH, serve },
-  ws::ws
-};
+use crate::{ communicator::Communicator, helpers::exit_with_error, settings::SETTINGS };
+use super::{ api::api, helpers::create_status_response, serve::serve, ws::ws };
 
+#[cfg(feature = "public_resources_caching")]
+use lazy_static::initialize;
 #[cfg(feature = "public_resources_caching")]
 use super::serve::PUBLIC_RESOURCES_CACHE;
 
@@ -27,18 +23,16 @@ use rustls_pemfile::{ certs, rsa_private_keys };
 use tokio_rustls::{ rustls::{ Certificate, PrivateKey, ServerConfig }, TlsAcceptor };
 #[cfg(feature = "secure_server")]
 use std::{ fs::File, io::BufReader };
-#[cfg(feature = "secure_server")]
-use super::helpers::prepare_check_path;
 
 #[cfg(feature = "secure_server")]
 fn load_secure_server_data() -> (Vec<Certificate>, PrivateKey) {
-  let certs_path = prepare_check_path(get_env("SETTLERS_CERT_PATH"), true);
-  let keys_path = prepare_check_path(get_env("SETTLERS_KEY_PATH"), true);
+  let certs_path = &SETTINGS.secure_server.cert_path;
+  let keys_path = &SETTINGS.secure_server.key_path;
 
-  let certs_file = File::open(&certs_path).unwrap_or_else(|err| {
+  let certs_file = File::open(certs_path).unwrap_or_else(|err| {
     exit_with_error(format!("Open certs file \"{}\" error: {}", certs_path, err))
   });
-  let keys_file = File::open(&keys_path).unwrap_or_else(|err| {
+  let keys_file = File::open(keys_path).unwrap_or_else(|err| {
     exit_with_error(format!("Open keys file \"{}\" error: {}", keys_path, err))
   });
 
@@ -187,18 +181,8 @@ async fn run(
 }
 
 pub async fn start(communicator: Arc<Mutex<Communicator>>, stop_receiver: Receiver<()>) {
-  // Need to check for errors lazy static refs before server start
-  initialize(&CURRENT_PATH);
-  initialize(&PUBLIC_RESOURCES_PATH);
-
-  let addr_string = get_env("SETTLERS_BIND_ADDR");
-
-  let addr: SocketAddr = addr_string.parse().unwrap_or_else(|err| {
-    exit_with_error(format!("Parse bind address \"{}\" error: {}", addr_string, err))
-  });
-
   let additional_acceptor = create_additional_acceptor();
-  let listener = create_tcp_listener(addr).await;
+  let listener = create_tcp_listener(SETTINGS.bind_addr).await;
 
   // Initialize public resources cache before server start accept connections
   #[cfg(feature = "public_resources_caching")]

@@ -1,6 +1,7 @@
 use dotenv::dotenv;
 use env_logger::{ Builder as EnvLoggerBuilder, Env };
-use log::{ LevelFilter, debug, error, info };
+use lazy_static::initialize;
+use log::{ LevelFilter, debug, error };
 use sea_orm::{ ConnectOptions, Database };
 use sea_orm_migration::MigratorTrait;
 use std::time::Duration;
@@ -8,11 +9,19 @@ use tokio::{
   runtime::Builder as RuntimeBuilder, signal::ctrl_c, sync::oneshot::channel, join, spawn
 };
 use crate::{
-  communicator::Communicator, db::Migrator, helpers::{ exit_with_error, get_env },
-  http::start, intermedium::Intermedium
+  communicator::Communicator, db::Migrator, helpers::{ CURRENT_PATH, exit_with_error },
+  http::start, intermedium::Intermedium, settings::SETTINGS
 };
 
 fn main() {
+  // Before initialize settings and EnvLogger try read .env file
+  // It may contain RUST_LOG or SETTLERS_* variables
+  dotenv().ok();
+
+  // Need to check for errors lazy static refs before server start
+  initialize(&SETTINGS);
+  initialize(&CURRENT_PATH);
+
   // Easy way to disable rustls crate self-signed certificate client error
   // If you need logs from rustls::conn module, delete filter or use .format env_logger::Builder
   // method to filter exactly this error according to its content
@@ -20,16 +29,11 @@ fn main() {
     .filter_module("rustls::conn", LevelFilter::Off)
     .init();
 
-  match dotenv() {
-    Ok(path) => info!("Environment variables loaded from \"{}\"", path.as_path().display()),
-    Err(_) => info!("File with environment variables not found")
-  };
-
   let runtime = RuntimeBuilder::new_multi_thread().enable_io().enable_time().build()
     .unwrap_or_else(|err| exit_with_error(format!("Create tokio runtime error: {}", err)));
 
   runtime.block_on(async {
-    let db_connect_options = ConnectOptions::new(get_env("SETTLERS_DB_URL"))
+    let db_connect_options = ConnectOptions::new(SETTINGS.database.url.clone())
       .max_connections(32)
       .min_connections(2)
       .connect_timeout(Duration::from_secs(5))
@@ -103,3 +107,4 @@ mod db;
 mod helpers;
 mod http;
 mod intermedium;
+mod settings;

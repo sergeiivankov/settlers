@@ -8,8 +8,8 @@ use log::debug;
 use std::{
   collections::HashMap, io::{ Error, ErrorKind }, path::{ Component, Path, PathBuf }
 };
-use crate::helpers::get_env;
-use super::helpers::{ prepare_check_path, return_result_response, create_status_response };
+use crate::settings::SETTINGS;
+use super::helpers::{ return_result_response, create_status_response };
 
 #[cfg(not(feature = "public_resources_caching"))]
 use std::path::MAIN_SEPARATOR;
@@ -32,10 +32,6 @@ use tokio::sync::Mutex;
 use walkdir::WalkDir;
 
 lazy_static! {
-  pub static ref PUBLIC_RESOURCES_PATH: String = prepare_check_path(
-    get_env("SETTLERS_PUBLIC_RESOURCES_PATH"), false
-  );
-
   static ref MIME_TYPES: HashMap<&'static str, &'static str> = {
     let mut mime_types = HashMap::new();
     mime_types.insert("html", "text/html");
@@ -56,7 +52,7 @@ lazy_static! {
 
     let mut hasher = Sha1::new();
 
-    for entry_result in WalkDir::new(&*PUBLIC_RESOURCES_PATH) {
+    for entry_result in WalkDir::new(&SETTINGS.public_resources_path) {
       match entry_result {
         Ok(entry) => {
           let path = entry.path();
@@ -85,7 +81,7 @@ lazy_static! {
 
           cache.insert(
             // Cut off path to public resources directory from full public resource path
-            String::from(&path_str[(PUBLIC_RESOURCES_PATH.len() + 1)..]),
+            String::from(&path_str[(SETTINGS.public_resources_path.len() + 1)..]),
             (format!("\"{}\"", encode(hash)), Full::new(content.into()))
           );
         },
@@ -123,7 +119,7 @@ async fn get_response_data(
 async fn get_response_data(
   path: String, mime_type: &str, _req: Request<Incoming>
 ) -> Result<HttpResult<Response<Full<Bytes>>>, Error> {
-  let full_path = format!("{}{}{}", *PUBLIC_RESOURCES_PATH, MAIN_SEPARATOR, path);
+  let full_path = format!("{}{}{}", SETTINGS.public_resources_path, MAIN_SEPARATOR, path);
 
   match read(full_path).await {
     Ok(content) => Ok(

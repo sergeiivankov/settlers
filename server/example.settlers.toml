@@ -1,0 +1,17 @@
+# Server listening address
+bind_addr = "127.0.0.1:80"
+
+# Path to public resources directory, absolute or relative from run directory
+public_resources_path = "../public"
+
+# Database connection
+[database]
+url = "protocol://username:password@host/database"
+
+# Secure server certificates paths
+# Need only for "secure_server" feature
+[secure_server]
+cert_path = "certs/localhost.crt"
+# Make shure, that private key file contain "-----BEGIN RSA PRIVATE KEY-----",
+# not only "-----BEGIN PRIVATE KEY-----", it not extract correct
+key_path = "certs/localhost.key"

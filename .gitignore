@@ -2,3 +2,4 @@ server/certs
 server/target
 server/.env
 server/settlers.sqlite
+server/settlers.toml
