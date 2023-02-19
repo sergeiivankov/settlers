@@ -1,6 +1,7 @@
 use config::{ builder::DefaultState, Config, ConfigBuilder, Environment, File };
 use dirs::config_dir;
 use log::{ debug, info };
+use serde_path_to_error::deserialize;
 use std::{ fs::metadata, io::{ Error, ErrorKind }, path::PathBuf };
 use crate::helpers::{ CURRENT_PATH, exit_with_error, prepare_check_path };
 use super::structs::Settings;
@@ -106,9 +107,9 @@ pub fn init() -> Settings {
     Err(err) => exit_with_error(format!("Build config error: {}", err))
   };
 
-  let mut settings: Settings = match config.try_deserialize() {
+  let mut settings: Settings = match deserialize(config) {
     Ok(settings) => settings,
-    Err(err) => exit_with_error(format!("Deserialize config error: {:#?}", err))
+    Err(err) => exit_with_error(format!("Config key \"{}\" error: {}", err.path(), err.inner()))
   };
 
   default(&mut settings);

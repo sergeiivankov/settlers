@@ -1318,6 +1318,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "serde_path_to_error"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "26b04f22b563c91331a10074bda3dd5492e3cc39d56bd557e91c0af42b6c7341"
+dependencies = [
+ "serde",
+]
+
+[[package]]
 name = "settlers-server"
 version = "0.1.0"
 dependencies = [
@@ -1338,6 +1347,7 @@ dependencies = [
  "sea-orm-migration",
  "sea-query",
  "serde",
+ "serde_path_to_error",
  "sha-1",
  "tokio",
  "tokio-rustls",
