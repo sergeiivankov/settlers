@@ -6,7 +6,7 @@
 compile_error!("Using one of `db_...` features is required");
 
 use dotenv::dotenv;
-use env_logger::{ Builder as EnvLoggerBuilder, Env };
+use env_logger::Builder as EnvLoggerBuilder;
 use lazy_static::initialize;
 use log::{ LevelFilter, debug, error };
 use sea_orm::{ ConnectOptions, Database };
@@ -29,12 +29,17 @@ fn main() {
   initialize(&SETTINGS);
   initialize(&CURRENT_PATH);
 
-  // Easy way to disable rustls crate self-signed certificate client error
-  // If you need logs from rustls::conn module, delete filter or use .format env_logger::Builder
-  // method to filter exactly this error according to its content
-  EnvLoggerBuilder::from_env(Env::default().default_filter_or("error"))
-    .filter_module("rustls::conn", LevelFilter::Off)
-    .init();
+  // For logging initialization "log" config value usage
+  let mut env_logger_builder = EnvLoggerBuilder::new();
+  env_logger_builder.parse_filters(&SETTINGS.log.as_ref().unwrap());
+
+  // Disable rustls crate logging by default (in particular, self-signed certificate client error)
+  // TODO: if https://github.com/launchbadge/sqlx/pull/2356 will be accepted,
+  //       rewrite to rustls crate feature "logging" using
+  #[cfg(all(feature = "secure_server", not(feature = "rustls_logging")))]
+  env_logger_builder.filter_module("rustls", LevelFilter::Off);
+
+  env_logger_builder.init();
 
   let runtime = RuntimeBuilder::new_multi_thread().enable_io().enable_time().build()
     .unwrap_or_else(|err| exit_with_error(format!("Create tokio runtime error: {}", err)));
@@ -47,6 +52,10 @@ fn main() {
       .acquire_timeout(Duration::from_secs(SETTINGS.database.acquire_timeout.unwrap()))
       .idle_timeout(Duration::from_secs(SETTINGS.database.idle_timeout.unwrap()))
       .max_lifetime(Duration::from_secs(SETTINGS.database.max_lifetime.unwrap()))
+      // Set max logging level, it filtered by "log" config value inside "sqlx" crate
+      // To control database logging, use "sqlx=level" in "log" config value
+      .sqlx_logging_level(LevelFilter::Debug)
+      .sqlx_logging(true)
       .to_owned();
 
     let db = match Database::connect(db_connect_options).await {

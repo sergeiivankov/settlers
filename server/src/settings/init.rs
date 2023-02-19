@@ -61,6 +61,8 @@ fn try_add_file_source(
 }
 
 fn default(settings: &mut Settings) {
+  settings.log = settings.log.clone().or(Some(String::from("error")));
+
   settings.database.min_connections = settings.database.min_connections.or(Some(1));
   settings.database.max_connections = settings.database.max_connections.or(Some(32));
   settings.database.connect_timeout = settings.database.connect_timeout.or(Some(10));

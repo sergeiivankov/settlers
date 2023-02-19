@@ -21,6 +21,7 @@ pub struct SecureServer {
 
 #[derive(Debug, Deserialize)]
 pub struct Settings {
+  pub log: Option<String>,
   pub bind_addr: SocketAddr,
   pub public_resources_path: String,
   pub database: Database,

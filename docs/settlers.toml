@@ -1,3 +1,8 @@
+# Logging level (see https://docs.rs/env_logger/latest/env_logger/index.html#enabling-logging)
+# For example, to log info by default and debug database, use "info,sqlx=debug" value
+# To enable "rustls" crate logging use "rustls_logging" feature
+# log = "error"
+
 # Server listening address
 bind_addr = "127.0.0.1:80"
 
