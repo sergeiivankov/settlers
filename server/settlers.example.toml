@@ -6,12 +6,25 @@ public_resources_path = "../public"
 
 # Database connection
 [database]
+# Database connection URL
 url = "protocol://username:password@host/database"
+# Minimum connections count in pool
+# min_connections = 1
+# Maximum connections count in pool
+# max_connections = 32
+# Timeout duration in seconds when acquiring a connection
+# connect_timeout = 10
+# Acquiring connection timeout duration in seconds
+# acquire_timeout = 10
+# Idle duration in seconds before closing a connection
+# idle_timeout = 10
+# Maximum lifetime in seconds of individual connections
+# max_lifetime = 10
 
 # Secure server certificates paths
 # Need only for "secure_server" feature
-[secure_server]
-cert_path = "certs/localhost.crt"
+# [secure_server]
+# cert_path = "certs/localhost.crt"
 # Make shure, that private key file contain "-----BEGIN RSA PRIVATE KEY-----",
 # not only "-----BEGIN PRIVATE KEY-----", it not extract correct
-key_path = "certs/localhost.key"
+# key_path = "certs/localhost.key"

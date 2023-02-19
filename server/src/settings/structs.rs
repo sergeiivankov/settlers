@@ -3,7 +3,13 @@ use std::net::SocketAddr;
 
 #[derive(Debug, Deserialize)]
 pub struct Database {
-  pub url: String
+  pub url: String,
+  pub min_connections: Option<u32>,
+  pub max_connections: Option<u32>,
+  pub connect_timeout: Option<u64>,
+  pub acquire_timeout: Option<u64>,
+  pub idle_timeout: Option<u64>,
+  pub max_lifetime: Option<u64>
 }
 
 #[cfg(feature = "secure_server")]

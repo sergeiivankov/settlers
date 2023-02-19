@@ -60,6 +60,15 @@ fn try_add_file_source(
   builder.add_source(File::with_name(path_str))
 }
 
+fn default(settings: &mut Settings) {
+  settings.database.min_connections = settings.database.min_connections.or(Some(1));
+  settings.database.max_connections = settings.database.max_connections.or(Some(32));
+  settings.database.connect_timeout = settings.database.connect_timeout.or(Some(10));
+  settings.database.acquire_timeout = settings.database.acquire_timeout.or(Some(10));
+  settings.database.idle_timeout = settings.database.idle_timeout.or(Some(10));
+  settings.database.max_lifetime = settings.database.max_lifetime.or(Some(10));
+}
+
 fn check(settings: &mut Settings) {
   settings.public_resources_path = prepare_check_path(&settings.public_resources_path, false);
 
@@ -100,6 +109,7 @@ pub fn init() -> Settings {
     Err(err) => exit_with_error(format!("Deserialize config error: {:#?}", err))
   };
 
+  default(&mut settings);
   check(&mut settings);
 
   settings

@@ -41,12 +41,12 @@ fn main() {
 
   runtime.block_on(async {
     let db_connect_options = ConnectOptions::new(SETTINGS.database.url.clone())
-      .max_connections(32)
-      .min_connections(2)
-      .connect_timeout(Duration::from_secs(5))
-      .acquire_timeout(Duration::from_secs(5))
-      .idle_timeout(Duration::from_secs(10))
-      .max_lifetime(Duration::from_secs(10))
+      .min_connections(SETTINGS.database.min_connections.unwrap())
+      .max_connections(SETTINGS.database.max_connections.unwrap())
+      .connect_timeout(Duration::from_secs(SETTINGS.database.connect_timeout.unwrap()))
+      .acquire_timeout(Duration::from_secs(SETTINGS.database.acquire_timeout.unwrap()))
+      .idle_timeout(Duration::from_secs(SETTINGS.database.idle_timeout.unwrap()))
+      .max_lifetime(Duration::from_secs(SETTINGS.database.max_lifetime.unwrap()))
       .to_owned();
 
     let db = match Database::connect(db_connect_options).await {
