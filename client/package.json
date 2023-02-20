@@ -1,0 +1,14 @@
+{
+  "name": "settlers-client",
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "build": "rollup -c"
+  },
+  "devDependencies": {
+    "rollup": "3.17.2",
+    "rollup-plugin-sass": "1.12.17",
+    "svelte": "3.55.1"
+  },
+  "license": "MIT"
+}
