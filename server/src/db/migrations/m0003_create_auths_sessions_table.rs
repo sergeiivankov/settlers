@@ -1,7 +1,7 @@
 use sea_orm::DeriveMigrationName;
 use sea_orm_migration::{ async_trait::async_trait, manager::SchemaManager, MigrationTrait };
 use super::{ MigrationResult, simple_up, simple_down };
-use crate::db::entities::auth::Entity;
+use crate::db::entities::auth_session::Entity;
 
 #[derive(DeriveMigrationName)]
 pub struct Migration;

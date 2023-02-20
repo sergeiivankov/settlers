@@ -18,17 +18,17 @@ pub struct Model {
 #[derive(Clone, Debug, EnumIter, DeriveRelation)]
 pub enum Relation {
   #[sea_orm(
-    belongs_to = "super::auth::Entity",
+    belongs_to = "super::auth_method::Entity",
     from = "Column::Id",
-    to = "super::auth::Column::UserId"
+    to = "super::auth_method::Column::UserId"
   )]
-  Auth,
+  AuthMethod,
   #[sea_orm(
-    belongs_to = "super::session::Entity",
+    belongs_to = "super::auth_session::Entity",
     from = "Column::Id",
-    to = "super::session::Column::UserId"
+    to = "super::auth_session::Column::UserId"
   )]
-  Session
+  AuthSession
 }
 
 impl ActiveModelBehavior for ActiveModel {}

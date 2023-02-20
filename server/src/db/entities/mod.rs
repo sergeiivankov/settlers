@@ -1,3 +1,3 @@
-pub mod auth;
-pub mod session;
+pub mod auth_method;
+pub mod auth_session;
 pub mod user;
