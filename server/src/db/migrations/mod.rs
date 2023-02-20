@@ -1,5 +1,6 @@
 mod m0001_create_users_table;
-mod m0002_create_sessions_table;
+mod m0002_create_auths_table;
+mod m0003_create_sessions_table;
 
 use sea_orm::{ schema::Schema, EntityTrait };
 use sea_orm_migration::{
@@ -16,7 +17,8 @@ impl MigratorTrait for Migrator {
   fn migrations() -> Vec<Box<dyn MigrationTrait>> {
     vec![
       Box::new(m0001_create_users_table::Migration),
-      Box::new(m0002_create_sessions_table::Migration)
+      Box::new(m0002_create_auths_table::Migration),
+      Box::new(m0003_create_sessions_table::Migration)
     ]
   }
 }
