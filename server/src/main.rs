@@ -123,4 +123,5 @@ mod db;
 mod helpers;
 mod http;
 mod intermedium;
+mod protos;
 mod settings;

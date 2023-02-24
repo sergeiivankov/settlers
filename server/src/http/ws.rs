@@ -2,12 +2,13 @@ use bytes::Bytes;
 use futures_util::{ SinkExt, StreamExt };
 use http_body_util::Full;
 use hyper::{
-  Method, Request, Response, StatusCode, Version, body::Incoming,
+  body::Incoming,
   header::{
     CONNECTION, SEC_WEBSOCKET_ACCEPT, SEC_WEBSOCKET_KEY, SEC_WEBSOCKET_VERSION, UPGRADE,
-    HeaderMap, HeaderName
+    HeaderMap, HeaderName, HeaderValue
   },
-  upgrade::{ Upgraded, on }
+  upgrade::{ Upgraded, on },
+  Method, Request, Response, StatusCode, Version
 };
 use log::{ debug, error };
 use std::sync::Arc;
@@ -16,7 +17,7 @@ use tokio_tungstenite::{
   WebSocketStream, tungstenite::{ handshake::derive_accept_key, protocol::Role, Error, Message }
 };
 use crate::communicator::Communicator;
-use super::helpers::{ create_status_response, return_result_response };
+use super::helpers::status_response;
 
 fn get_header_str(name: HeaderName, headers: &HeaderMap) -> Option<&str> {
   match headers.get(name) {
@@ -103,7 +104,7 @@ async fn handle_connection(
 
 pub async fn ws(
   path: &str, mut req: Request<Incoming>, communicator: Arc<Mutex<Communicator>>
-) -> Result<Response<Full<Bytes>>, String> {
+) -> Response<Full<Bytes>> {
   let version = req.version();
   let headers = req.headers();
   let key = headers.get(SEC_WEBSOCKET_KEY);
@@ -121,7 +122,7 @@ pub async fn ws(
   || headers.get(SEC_WEBSOCKET_VERSION).map(|v| v == "13").unwrap_or(false) == false
   {
     debug!("Check creating WS connection error: {:?}", req);
-    return create_status_response(StatusCode::BAD_REQUEST)
+    return status_response(StatusCode::BAD_REQUEST)
   }
 
   let derived = derive_accept_key(key.unwrap().as_bytes());
@@ -135,13 +136,14 @@ pub async fn ws(
     }
   });
 
-  return_result_response(
-    Response::builder()
-      .version(version)
-      .status(StatusCode::SWITCHING_PROTOCOLS)
-      .header(CONNECTION, "Upgrade")
-      .header(UPGRADE, "websocket")
-      .header(SEC_WEBSOCKET_ACCEPT, derived)
-      .body(Full::new(Bytes::new()))
-  )
+  let mut response = Response::new(Full::new(Bytes::new()));
+  *response.version_mut() = version;
+  *response.status_mut() = StatusCode::SWITCHING_PROTOCOLS;
+
+  let headers = response.headers_mut();
+  headers.insert(CONNECTION, HeaderValue::from_str("Upgrade").unwrap());
+  headers.insert(UPGRADE, HeaderValue::from_str("websocket").unwrap());
+  headers.insert(SEC_WEBSOCKET_ACCEPT, HeaderValue::from_str(&derived).unwrap());
+
+  response
 }

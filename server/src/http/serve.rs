@@ -1,15 +1,13 @@
 use bytes::Bytes;
 use http_body_util::Full;
-use hyper::{
-  body::Incoming, header::CONTENT_TYPE, http::Result as HttpResult, Response, Request, StatusCode
-};
+use hyper::{ body::Incoming, header::{ CONTENT_TYPE, HeaderValue }, Response, Request, StatusCode };
 use lazy_static::lazy_static;
 use log::debug;
 use std::{
   collections::HashMap, io::{ Error, ErrorKind }, path::{ Component, Path, PathBuf }
 };
 use crate::settings::SETTINGS;
-use super::helpers::{ return_result_response, create_status_response };
+use super::helpers::status_response;
 
 #[cfg(not(feature = "public_resources_caching"))]
 use std::path::MAIN_SEPARATOR;
@@ -33,7 +31,7 @@ use walkdir::WalkDir;
 
 lazy_static! {
   static ref MIME_TYPES: HashMap<&'static str, &'static str> = {
-    let mut mime_types = HashMap::new();
+    let mut mime_types = HashMap::with_capacity(5);
     mime_types.insert("html", "text/html");
     mime_types.insert("js", "text/javascript");
     mime_types.insert("css", "text/css");
@@ -96,20 +94,26 @@ lazy_static! {
 #[cfg(feature = "public_resources_caching")]
 async fn get_response_data(
   path: String, mime_type: &str, req: Request<Incoming>
-) -> Result<HttpResult<Response<Full<Bytes>>>, Error> {
+) -> Result<Response<Full<Bytes>>, Error> {
   let cache = PUBLIC_RESOURCES_CACHE.lock().await;
 
   match cache.get(&path) {
     Some((hash, body)) => {
       if let Some(client_hash) = req.headers().get(IF_NONE_MATCH) {
         if client_hash == hash {
-          return Ok(
-            Response::builder().status(StatusCode::NOT_MODIFIED).body(Full::new(Bytes::new()))
-          )
+          let mut response = Response::new(Full::new(Bytes::new()));
+          *response.status_mut() = StatusCode::NOT_MODIFIED;
+          return Ok(response)
         }
       }
 
-      Ok(Response::builder().header(CONTENT_TYPE, mime_type).header(ETAG, hash).body(body.clone()))
+      let mut response = Response::new(body.clone());
+
+      let headers = response.headers_mut();
+      headers.insert(CONTENT_TYPE, HeaderValue::from_str(mime_type).unwrap());
+      headers.insert(ETAG, HeaderValue::from_str(hash).unwrap());
+
+      Ok(response)
     },
     None => Err(Error::new(ErrorKind::NotFound, ""))
   }
@@ -118,18 +122,23 @@ async fn get_response_data(
 #[cfg(not(feature = "public_resources_caching"))]
 async fn get_response_data(
   path: String, mime_type: &str, _req: Request<Incoming>
-) -> Result<HttpResult<Response<Full<Bytes>>>, Error> {
+) -> Result<Response<Full<Bytes>>, Error> {
   let full_path = format!("{}{}{}", SETTINGS.public_resources_path, MAIN_SEPARATOR, path);
 
   match read(full_path).await {
-    Ok(content) => Ok(
-      Response::builder().header(CONTENT_TYPE, mime_type).body(Full::new(content.into()))
-    ),
+    Ok(content) => {
+      let header_value = HeaderValue::from_str(mime_type).unwrap();
+
+      let mut response = Response::new(Full::new(content.into()));
+      response.headers_mut().insert(CONTENT_TYPE, header_value);
+
+      Ok(response)
+    },
     Err(err) => Err(err)
   }
 }
 
-pub async fn serve(path: &str, req: Request<Incoming>) -> Result<Response<Full<Bytes>>, String> {
+pub async fn serve(path: &str, req: Request<Incoming>) -> Response<Full<Bytes>> {
   // Path analisis for special components exists
   let path = {
     let mut normalized = PathBuf::new();
@@ -138,7 +147,7 @@ pub async fn serve(path: &str, req: Request<Incoming>) -> Result<Response<Full<B
       match component {
         Component::Prefix(_) | Component::CurDir | Component::RootDir | Component::ParentDir => {
           debug!("Found special path component {:?} in \"{}\"", component, path);
-          return create_status_response(StatusCode::NOT_FOUND)
+          return status_response(StatusCode::NOT_FOUND)
         },
         Component::Normal(c) => normalized.push(c)
       };
@@ -151,7 +160,7 @@ pub async fn serve(path: &str, req: Request<Incoming>) -> Result<Response<Full<B
     Some(path) => path,
     None => {
       debug!("Convert path \"{}\" to str error", path.display());
-      return create_status_response(StatusCode::INTERNAL_SERVER_ERROR)
+      return status_response(StatusCode::INTERNAL_SERVER_ERROR)
     }
   };
 
@@ -164,11 +173,11 @@ pub async fn serve(path: &str, req: Request<Incoming>) -> Result<Response<Full<B
   let mime_type = MIME_TYPES.get(ext).unwrap_or(&"application/octet-stream");
 
   match get_response_data(path, mime_type, req).await {
-    Ok(response) => return_result_response(response),
+    Ok(response) => response,
     Err(err) => {
       debug!("Read file error: {}", err);
 
-      create_status_response(match err.kind() {
+      status_response(match err.kind() {
         ErrorKind::NotFound | ErrorKind::PermissionDenied => StatusCode::NOT_FOUND,
         _ => StatusCode::INTERNAL_SERVER_ERROR
       })

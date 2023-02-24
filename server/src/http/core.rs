@@ -1,16 +1,17 @@
 use bytes::Bytes;
 use http_body_util::Full;
 use hyper::{
-  Request, Response, StatusCode, body::Incoming, server::conn::http1::Builder, service::service_fn
+  body::{ Body, Incoming }, server::conn::http1::Builder, service::service_fn,
+  Request, Response, StatusCode
 };
 use log::{ debug, info, error };
-use std::{ marker::Unpin, net::SocketAddr, sync::Arc };
+use std::{ convert::Infallible, marker::Unpin, net::SocketAddr, sync::Arc };
 use tokio::{
   io::{ AsyncRead, AsyncWrite }, net::{ TcpListener, TcpStream },
   sync::{ oneshot::Receiver, Mutex }, task::spawn, select
 };
 use crate::{ communicator::Communicator, helpers::exit_with_error, settings::SETTINGS };
-use super::{ api::api, helpers::create_status_response, serve::serve, ws::ws };
+use super::{ api::api, helpers::status_response, serve::serve, ws::ws };
 
 #[cfg(feature = "public_resources_caching")]
 use lazy_static::initialize;
@@ -23,6 +24,8 @@ use rustls_pemfile::{ certs, rsa_private_keys };
 use tokio_rustls::{ rustls::{ Certificate, PrivateKey, ServerConfig }, TlsAcceptor };
 #[cfg(feature = "secure_server")]
 use std::{ fs::File, io::BufReader };
+
+const MAX_BODY_SIZE: u64 = 1024 * 8;
 
 #[cfg(feature = "secure_server")]
 fn load_secure_server_data() -> (Vec<Certificate>, PrivateKey) {
@@ -55,7 +58,16 @@ fn load_secure_server_data() -> (Vec<Certificate>, PrivateKey) {
 
 async fn handle_connection(
   req: Request<Incoming>, communicator: Arc<Mutex<Communicator>>
-) -> Result<Response<Full<Bytes>>, String> {
+) -> Response<Full<Bytes>> {
+  let size = match req.body().size_hint().upper() {
+    Some(size) => size,
+    None => return status_response(StatusCode::LENGTH_REQUIRED)
+  };
+
+  if size > MAX_BODY_SIZE {
+    return status_response(StatusCode::PAYLOAD_TOO_LARGE)
+  }
+
   let uri = req.uri().clone();
 
   let path = match uri.path().get(1..) {
@@ -74,8 +86,14 @@ async fn handle_connection(
     "public" => serve(subpath, req).await,
     "api" => api(subpath, req).await,
     "ws" => ws(subpath, req, communicator).await,
-    _ => create_status_response(StatusCode::NOT_FOUND)
+    _ => status_response(StatusCode::NOT_FOUND)
   }
+}
+
+async fn handle_connection_wrapper(
+  req: Request<Incoming>, communicator: Arc<Mutex<Communicator>>
+) -> Result<Response<Full<Bytes>>, Infallible> {
+  Ok(handle_connection(req, communicator).await)
 }
 
 async fn create_tcp_listener(addr: SocketAddr) -> TcpListener {
@@ -103,7 +121,7 @@ where
   I: AsyncRead + AsyncWrite + Unpin + Send + 'static
 {
   let connection = Builder::new().serve_connection(
-    stream, service_fn(move |req| handle_connection(req, communicator.clone()))
+    stream, service_fn(move |req| handle_connection_wrapper(req, communicator.clone()))
   );
   let connection = connection.with_upgrades();
   connection.await.unwrap_or_else(|err| error!("Handle connection error: {}", err));

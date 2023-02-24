@@ -22,6 +22,7 @@ http-body-util = "0.1.0-rc.2"
 hyper = { version = "1.0.0-rc.2", features = ["server", "http1"] }
 lazy_static = "1.4.0"
 log = { version = "0.4.17", features = ["max_level_debug", "release_max_level_info"] }
+quick-protobuf = "0.8.1"
 rustls-pemfile = { version = "1.0.2", optional = true }
 sea-orm = { version = "0.11.0", default-features = false, features = ["macros", "runtime-tokio-rustls"] }
 sea-orm-migration = { version = "0.11.0", default-features = false, features = ["runtime-tokio-rustls"] }
@@ -33,6 +34,10 @@ tokio = { version = "1.25.0", features = ["rt-multi-thread", "net", "fs", "signa
 tokio-rustls = { version = "0.23.4", default-features = false, features = ["dangerous_configuration"], optional = true }
 tokio-tungstenite = { version = "0.18.0", default-features = false, features = ["handshake"] }
 walkdir = { version = "2.3.2", optional = true }
+
+[build-dependencies]
+pb-rs = { version = "0.10.0", default-features = false }
+walkdir = "2.3.2"
 
 [features]
 default = ["db_sqlite"]
