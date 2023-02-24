@@ -23,8 +23,7 @@ fn main() {
 
   let config_builder = ConfigBuilder::new(&protos, None, Some(&out_dir), &[in_dir])
     .unwrap()
-    .dont_use_cow(true)
-    .headers(false);
+    .dont_use_cow(true);
 
   FileDescriptor::run(&config_builder.build()).unwrap();
 }
