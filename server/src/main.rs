@@ -26,8 +26,8 @@ fn main() {
   dotenv().ok();
 
   // Need to check for errors lazy static refs before server start
-  initialize(&SETTINGS);
   initialize(&CURRENT_PATH);
+  initialize(&SETTINGS);
 
   // For logging initialization "log" config value usage
   let mut env_logger_builder = EnvLoggerBuilder::new();

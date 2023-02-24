@@ -1,20 +1,21 @@
 use bytes::Bytes;
 use http_body_util::Full;
 use hyper::{
-  body::{ Body, Incoming }, server::conn::http1::Builder, service::service_fn,
-  Request, Response, StatusCode
+  body::{ Body, Incoming }, server::conn::http1::Builder,
+  service::Service as HyperService, Request, Response, StatusCode
 };
+use lazy_static::initialize;
 use log::{ debug, info, error };
-use std::{ convert::Infallible, marker::Unpin, net::SocketAddr, sync::Arc };
+use std::{
+  convert::Infallible, future::Future, marker::Unpin, net::SocketAddr, pin::Pin, sync::Arc
+};
 use tokio::{
   io::{ AsyncRead, AsyncWrite }, net::{ TcpListener, TcpStream },
   sync::{ oneshot::Receiver, Mutex }, task::spawn, select
 };
 use crate::{ communicator::Communicator, helpers::exit_with_error, settings::SETTINGS };
-use super::{ api::api, helpers::status_response, serve::serve, ws::ws };
+use super::{ api::{ ROUTES, api }, helpers::status_response, serve::serve, ws::ws };
 
-#[cfg(feature = "public_resources_caching")]
-use lazy_static::initialize;
 #[cfg(feature = "public_resources_caching")]
 use super::serve::PUBLIC_RESOURCES_CACHE;
 
@@ -26,6 +27,22 @@ use tokio_rustls::{ rustls::{ Certificate, PrivateKey, ServerConfig }, TlsAccept
 use std::{ fs::File, io::BufReader };
 
 const MAX_BODY_SIZE: u64 = 1024 * 8;
+
+#[derive(Clone)]
+struct Service {
+  communicator: Arc<Mutex<Communicator>>
+}
+
+impl HyperService<Request<Incoming>> for Service {
+  type Response = Response<Full<Bytes>>;
+  type Error = Infallible;
+  type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+
+  fn call(&mut self, req: Request<Incoming>) -> Self::Future {
+    let communicator = self.communicator.clone();
+    Box::pin(async { Ok(handle_connection(req, communicator).await) })
+  }
+}
 
 #[cfg(feature = "secure_server")]
 fn load_secure_server_data() -> (Vec<Certificate>, PrivateKey) {
@@ -90,12 +107,6 @@ async fn handle_connection(
   }
 }
 
-async fn handle_connection_wrapper(
-  req: Request<Incoming>, communicator: Arc<Mutex<Communicator>>
-) -> Result<Response<Full<Bytes>>, Infallible> {
-  Ok(handle_connection(req, communicator).await)
-}
-
 async fn create_tcp_listener(addr: SocketAddr) -> TcpListener {
   let listener = TcpListener::bind(addr).await.unwrap_or_else(|err| {
     exit_with_error(format!("Create address listener error: {}", err))
@@ -116,13 +127,11 @@ async fn accept_connection(listener: &TcpListener) -> Option<(TcpStream, SocketA
   }
 }
 
-async fn serve_connection<I>(stream: I, communicator: Arc<Mutex<Communicator>>)
+async fn serve_connection<I>(stream: I, service: Service)
 where
   I: AsyncRead + AsyncWrite + Unpin + Send + 'static
 {
-  let connection = Builder::new().serve_connection(
-    stream, service_fn(move |req| handle_connection_wrapper(req, communicator.clone()))
-  );
+  let connection = Builder::new().serve_connection(stream, service);
   let connection = connection.with_upgrades();
   connection.await.unwrap_or_else(|err| error!("Handle connection error: {}", err));
 }
@@ -181,14 +190,11 @@ async fn run(
 }
 
 #[cfg(not(feature = "secure_server"))]
-async fn run(
-  listener: TcpListener, communicator: Arc<Mutex<Communicator>>,
-  _acceptor: (), mut stop_receiver: Receiver<()>
-) {
+async fn run(listener: TcpListener, service: Service, _: (), mut stop_receiver: Receiver<()>) {
   loop {
     select! {
       Some((stream, _)) = accept_connection(&listener) => {
-        spawn(serve_connection(stream, communicator.clone()));
+        spawn(serve_connection(stream, service.clone()));
       },
       _ = &mut stop_receiver => {
         debug!("Graceful http shutdown");
@@ -202,11 +208,13 @@ pub async fn start(communicator: Arc<Mutex<Communicator>>, stop_receiver: Receiv
   let additional_acceptor = create_additional_acceptor();
   let listener = create_tcp_listener(SETTINGS.bind_addr).await;
 
-  // Initialize public resources cache before server start accept connections
+  // Initialize lazy static refs before server start accept connections
+  // to prevent slowdown first requests
+  initialize(&ROUTES);
   #[cfg(feature = "public_resources_caching")]
   initialize(&PUBLIC_RESOURCES_CACHE);
 
-  run(listener, communicator, additional_acceptor, stop_receiver).await;
+  run(listener, Service { communicator }, additional_acceptor, stop_receiver).await;
 
   // TODO: when https://github.com/hyperium/hyper/issues/2730 will be fixed,
   //       implement server graceful shutdown

@@ -18,7 +18,7 @@ type Routes = HashMap<
 >;
 
 lazy_static! {
-  static ref ROUTES: Routes = {
+  pub static ref ROUTES: Routes = {
     let mut routes: Routes = HashMap::with_capacity(2);
 
     routes.insert("check_token", Box::new(|bytes| Ok(check_token(bytes_to_params(bytes)?))));
