@@ -19,7 +19,7 @@ fastrand = "1.9.0"
 futures-util = { version = "0.3.26", default-features = false, features = ["sink", "std"] }
 hex = { version = "0.4.3", optional = true }
 http-body-util = "0.1.0-rc.2"
-hyper = { version = "1.0.0-rc.2", features = ["server", "http1"] }
+hyper = { version = "1.0.0-rc.3", features = ["server", "http1"] }
 lazy_static = "1.4.0"
 log = { version = "0.4.17", features = ["max_level_debug", "release_max_level_info"] }
 quick-protobuf = "0.8.1"

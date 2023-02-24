@@ -208,7 +208,6 @@ pub async fn start(communicator: Arc<Mutex<Communicator>>, stop_receiver: Receiv
 
   run(listener, communicator, additional_acceptor, stop_receiver).await;
 
-  // TODO: server graceful shutdown
-  // In hyper-1.0.0-rc.2 not resolved some issues related with
-  // server graceful shutdown, so its not used here
+  // TODO: when https://github.com/hyperium/hyper/issues/2730 will be fixed,
+  //       implement server graceful shutdown
 }

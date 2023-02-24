@@ -34,7 +34,7 @@ fn main() {
   env_logger_builder.parse_filters(&SETTINGS.log.as_ref().unwrap());
 
   // Disable rustls crate logging by default (in particular, self-signed certificate client error)
-  // TODO: if https://github.com/launchbadge/sqlx/pull/2356 will be accepted,
+  // TODO: if https://github.com/launchbadge/sqlx/pull/2371 will be accepted,
   //       rewrite to rustls crate feature "logging" using
   #[cfg(all(feature = "secure_server", not(feature = "rustls_logging")))]
   env_logger_builder.filter_module("rustls", LevelFilter::Off);
