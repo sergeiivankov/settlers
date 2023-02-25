@@ -1,8 +1,6 @@
-use bytes::Bytes;
-use http_body_util::Full;
 use hyper::{
   body::{ Body, Incoming }, server::conn::http1::Builder,
-  service::Service as HyperService, Request, Response, StatusCode
+  service::Service as HyperService, Request, StatusCode
 };
 use lazy_static::initialize;
 use log::{ debug, info, error };
@@ -14,7 +12,12 @@ use tokio::{
   sync::{ oneshot::Receiver, Mutex }, task::spawn, select
 };
 use crate::{ communicator::Communicator, helpers::exit_with_error, settings::SETTINGS };
-use super::{ api::{ ROUTES, api }, helpers::status_response, serve::serve, ws::ws };
+use super::{
+  api::{ ROUTES, api },
+  serve::{ MIME_TYPES, serve },
+  ws::{ WEB_SOCKET_CONFIG, ws },
+  HttpResponse, status_response
+};
 
 #[cfg(feature = "public_resources_caching")]
 use super::serve::PUBLIC_RESOURCES_CACHE;
@@ -26,7 +29,10 @@ use tokio_rustls::{ rustls::{ Certificate, PrivateKey, ServerConfig }, TlsAccept
 #[cfg(feature = "secure_server")]
 use std::{ fs::File, io::BufReader };
 
-const MAX_BODY_SIZE: u64 = 1024 * 8;
+// Maximum HTTP body size
+// Maximum client payload would be a profile picture upload,
+// so 128 KiB should be enough for 160x160 png image, cropped by circle
+pub const MAX_HTTP_BODY_SIZE: u64 = 128 * 1024;
 
 #[derive(Clone)]
 struct Service {
@@ -34,13 +40,51 @@ struct Service {
 }
 
 impl HyperService<Request<Incoming>> for Service {
-  type Response = Response<Full<Bytes>>;
+  type Response = HttpResponse;
   type Error = Infallible;
   type Future = Pin<Box<dyn Future<Output = Result<Self::Response, Self::Error>> + Send>>;
 
   fn call(&mut self, req: Request<Incoming>) -> Self::Future {
     let communicator = self.communicator.clone();
     Box::pin(async { Ok(handle_connection(req, communicator).await) })
+  }
+}
+
+async fn handle_connection(
+  req: Request<Incoming>, communicator: Arc<Mutex<Communicator>>
+) -> HttpResponse {
+  // Main check payload size for all HTTP requests
+  // For API requests (except profile picture upload) separate limit
+  // For WebSocket messages limit set in stream creation
+  let body_size = match req.body().size_hint().upper() {
+    Some(size) => size,
+    None => return status_response(StatusCode::LENGTH_REQUIRED)
+  };
+
+  if body_size > MAX_HTTP_BODY_SIZE {
+    debug!("HTTP body too large: {} > {}", body_size, MAX_HTTP_BODY_SIZE);
+    return status_response(StatusCode::PAYLOAD_TOO_LARGE)
+  }
+
+  let uri = req.uri().clone();
+
+  let path = match uri.path().get(1..) {
+    Some(path) => path,
+    None => ""
+  };
+
+  let (section, subpath) = {
+    match path.split_once("/") {
+      Some(parts) => parts,
+      None => if path == "" { ("public", "index.html") } else { (path, "") }
+    }
+  };
+
+  match section {
+    "public" => serve(subpath, req).await,
+    "api" => api(subpath, req, body_size).await,
+    "ws" => ws(subpath, req, communicator).await,
+    _ => status_response(StatusCode::NOT_FOUND)
   }
 }
 
@@ -73,39 +117,23 @@ fn load_secure_server_data() -> (Vec<Certificate>, PrivateKey) {
   (certs, key)
 }
 
-async fn handle_connection(
-  req: Request<Incoming>, communicator: Arc<Mutex<Communicator>>
-) -> Response<Full<Bytes>> {
-  let size = match req.body().size_hint().upper() {
-    Some(size) => size,
-    None => return status_response(StatusCode::LENGTH_REQUIRED)
-  };
+#[cfg(feature = "secure_server")]
+fn create_additional_acceptor() -> Arc<Mutex<TlsAcceptor>> {
+  let (certs, key) = load_secure_server_data();
 
-  if size > MAX_BODY_SIZE {
-    return status_response(StatusCode::PAYLOAD_TOO_LARGE)
-  }
+  let server_config = ServerConfig::builder()
+    .with_safe_defaults()
+    .with_no_client_auth()
+    .with_single_cert(certs, key)
+    .unwrap_or_else(|err| {
+      exit_with_error(format!("Create TLS server config error: {}", err))
+    });
 
-  let uri = req.uri().clone();
-
-  let path = match uri.path().get(1..) {
-    Some(path) => path,
-    None => ""
-  };
-
-  let (section, subpath) = {
-    match path.split_once("/") {
-      Some(parts) => parts,
-      None => if path == "" { ("public", "index.html") } else { (path, "") }
-    }
-  };
-
-  match section {
-    "public" => serve(subpath, req).await,
-    "api" => api(subpath, req).await,
-    "ws" => ws(subpath, req, communicator).await,
-    _ => status_response(StatusCode::NOT_FOUND)
-  }
+  Arc::new(Mutex::new(TlsAcceptor::from(Arc::new(server_config))))
 }
+
+#[cfg(not(feature = "secure_server"))]
+fn create_additional_acceptor() {}
 
 async fn create_tcp_listener(addr: SocketAddr) -> TcpListener {
   let listener = TcpListener::bind(addr).await.unwrap_or_else(|err| {
@@ -131,39 +159,24 @@ async fn serve_connection<I>(stream: I, service: Service)
 where
   I: AsyncRead + AsyncWrite + Unpin + Send + 'static
 {
-  let connection = Builder::new().serve_connection(stream, service);
-  let connection = connection.with_upgrades();
+  let connection = Builder::new()
+    .max_buf_size(MAX_HTTP_BODY_SIZE as usize)
+    .serve_connection(stream, service)
+    .with_upgrades();
+
   connection.await.unwrap_or_else(|err| error!("Handle connection error: {}", err));
 }
 
 #[cfg(feature = "secure_server")]
-fn create_additional_acceptor() -> Arc<Mutex<TlsAcceptor>> {
-  let (certs, key) = load_secure_server_data();
-
-  let server_config = ServerConfig::builder()
-    .with_safe_defaults()
-    .with_no_client_auth()
-    .with_single_cert(certs, key)
-    .unwrap_or_else(|err| {
-      exit_with_error(format!("Create TLS server config error: {}", err))
-    });
-
-  Arc::new(Mutex::new(TlsAcceptor::from(Arc::new(server_config))))
-}
-
-#[cfg(not(feature = "secure_server"))]
-fn create_additional_acceptor() {}
-
-#[cfg(feature = "secure_server")]
 async fn run(
-  listener: TcpListener, communicator: Arc<Mutex<Communicator>>,
+  listener: TcpListener, service: Service,
   acceptor: Arc<Mutex<TlsAcceptor>>, mut stop_receiver: Receiver<()>
 ) {
   loop {
     select! {
       Some((stream, _)) = accept_connection(&listener) => {
         let acceptor_clone = acceptor.clone();
-        let communicator_clone = communicator.clone();
+        let service_clone = service.clone();
 
         spawn(async move {
           let acceptor = acceptor_clone.lock().await;
@@ -178,7 +191,7 @@ async fn run(
 
           drop(acceptor);
 
-          serve_connection(stream, communicator_clone).await
+          serve_connection(stream, service_clone).await
         });
       },
       _ = &mut stop_receiver => {
@@ -211,6 +224,8 @@ pub async fn start(communicator: Arc<Mutex<Communicator>>, stop_receiver: Receiv
   // Initialize lazy static refs before server start accept connections
   // to prevent slowdown first requests
   initialize(&ROUTES);
+  initialize(&MIME_TYPES);
+  initialize(&WEB_SOCKET_CONFIG);
   #[cfg(feature = "public_resources_caching")]
   initialize(&PUBLIC_RESOURCES_CACHE);
 

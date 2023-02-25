@@ -10,20 +10,41 @@ use hyper::{
   upgrade::{ Upgraded, on },
   Method, Request, Response, StatusCode, Version
 };
+use lazy_static::lazy_static;
 use log::{ debug, error };
 use std::sync::Arc;
 use tokio::{ sync::Mutex, task::spawn, select };
 use tokio_tungstenite::{
-  WebSocketStream, tungstenite::{ handshake::derive_accept_key, protocol::Role, Error, Message }
+  tungstenite::{
+    handshake::derive_accept_key, protocol::{ Role, WebSocketConfig }, Error, Message
+  },
+  WebSocketStream
 };
 use crate::communicator::Communicator;
-use super::helpers::status_response;
+use super::{ HttpResponse, status_response };
+
+// Maximum WebSocket message size
+// In the future, it can be increased depending on the maximum size
+// of data transmitted in one message
+const MAX_WEB_SOCKET_MESSAGE_SIZE: usize = 1024;
+
+lazy_static! {
+  pub static ref WEB_SOCKET_CONFIG: WebSocketConfig = WebSocketConfig {
+    max_send_queue: None,
+    max_message_size: Some(MAX_WEB_SOCKET_MESSAGE_SIZE),
+    max_frame_size: Some(MAX_WEB_SOCKET_MESSAGE_SIZE),
+    accept_unmasked_frames: false
+  };
+}
 
 fn get_header_str(name: HeaderName, headers: &HeaderMap) -> Option<&str> {
-  match headers.get(name) {
+  match headers.get(&name) {
     Some(value) => match value.to_str() {
       Ok(value) => Some(value),
-      Err(_) => None
+      Err(err) => {
+        debug!("Convert header \"{}\" to str error: {}", name, err);
+        None
+      }
     },
     None => None
   }
@@ -104,7 +125,7 @@ async fn handle_connection(
 
 pub async fn ws(
   path: &str, mut req: Request<Incoming>, communicator: Arc<Mutex<Communicator>>
-) -> Response<Full<Bytes>> {
+) -> HttpResponse {
   let version = req.version();
   let headers = req.headers();
   let key = headers.get(SEC_WEBSOCKET_KEY);
@@ -130,7 +151,8 @@ pub async fn ws(
   spawn(async move {
     match on(&mut req).await {
       Ok(upgraded) => handle_connection(
-        WebSocketStream::from_raw_socket(upgraded, Role::Server, None).await, communicator
+        WebSocketStream::from_raw_socket(upgraded, Role::Server, Some(*WEB_SOCKET_CONFIG)).await,
+        communicator
       ).await,
       Err(err) => debug!("Upgrade HTTP connection error: {}", err)
     }

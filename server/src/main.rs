@@ -5,6 +5,14 @@
 )))]
 compile_error!("Using one of `db_...` features is required");
 
+mod communicator;
+mod db;
+mod helpers;
+mod http;
+mod intermedium;
+mod protos;
+mod settings;
+
 use dotenv::dotenv;
 use env_logger::Builder as EnvLoggerBuilder;
 use lazy_static::initialize;
@@ -117,11 +125,3 @@ fn main() {
     }
   });
 }
-
-mod communicator;
-mod db;
-mod helpers;
-mod http;
-mod intermedium;
-mod protos;
-mod settings;

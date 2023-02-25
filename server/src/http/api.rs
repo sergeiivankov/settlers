@@ -1,21 +1,26 @@
-use bytes::{ Bytes, BytesMut };
-use http_body_util::{ BodyExt, Full };
-use hyper::{ body::Incoming, Request, Response, StatusCode };
+use bytes::Bytes;
+use http_body_util::BodyExt;
+use hyper::{ body::Incoming, Request, StatusCode };
 use lazy_static::lazy_static;
-use quick_protobuf::{
-  MessageRead, MessageWrite, deserialize_from_slice, serialize_into_slice
-};
+use log::debug;
 use std::collections::HashMap;
-use crate::protos::auth::{
-  CheckAuthTokenParams, CheckAuthTokenResult,
-  CheckAuthTokenTestParams, CheckAuthTokenTestResult
+use crate::protos::{
+  auth::{
+    CheckAuthTokenParams, CheckAuthTokenResult,
+    CheckAuthTokenTestParams, CheckAuthTokenTestResult
+  },
+  bytes_to_params, result_to_response
 };
-use super::helpers::status_response;
+use super::{ HttpResponse, status_response };
 
 type Routes = HashMap<
   &'static str,
-  Box<dyn Fn(&Bytes) -> Result<Response<Full<Bytes>>, Response<Full<Bytes>>> + Sync>
+  Box<dyn Fn(&Bytes) -> Result<HttpResponse, HttpResponse> + Sync>
 >;
+
+// Maximum API request HTTP body size
+// Important: for profile picture upload method use main HTTP body limit
+const MAX_API_BODY_SIZE: u64 = 1024;
 
 lazy_static! {
   pub static ref ROUTES: Routes = {
@@ -28,9 +33,26 @@ lazy_static! {
   };
 }
 
-pub async fn api(path: &str, req: Request<Incoming>) -> Response<Full<Bytes>> {
+fn check_token(_params: CheckAuthTokenParams) -> HttpResponse {
+  result_to_response(CheckAuthTokenResult { result: true })
+}
+
+fn check_token_test(_params: CheckAuthTokenTestParams) -> HttpResponse {
+  result_to_response(CheckAuthTokenTestResult { result: true })
+}
+
+pub async fn api(path: &str, req: Request<Incoming>, body_size: u64) -> HttpResponse {
   if !ROUTES.contains_key(path) {
     return status_response(StatusCode::NOT_FOUND)
+  }
+
+  // Check API request maximum body size before read it
+  // TODO: if upload profile picture method name changed, change it too
+  if path != "upload_picture" {
+    if body_size > MAX_API_BODY_SIZE {
+      debug!("API body too large: {} > {}", body_size, MAX_API_BODY_SIZE);
+      return status_response(StatusCode::PAYLOAD_TOO_LARGE)
+    }
   }
 
   let collected = match req.collect().await {
@@ -45,25 +67,4 @@ pub async fn api(path: &str, req: Request<Incoming>) -> Response<Full<Bytes>> {
     Ok(response) => response,
     Err(response) => response
   }
-}
-
-fn bytes_to_params<'a, R: MessageRead<'a>>(bytes: &'a Bytes) -> Result<R, Response<Full<Bytes>>> {
-  deserialize_from_slice(bytes).map_err(|_| status_response(StatusCode::BAD_REQUEST))
-}
-
-fn result_to_response<W: MessageWrite>(result: W) -> Response<Full<Bytes>> {
-  let mut bytes = BytesMut::with_capacity(result.get_size());
-  match serialize_into_slice(&result, &mut bytes) {
-    Ok(_) => {},
-    Err(_) => return status_response(StatusCode::INTERNAL_SERVER_ERROR)
-  }
-  Response::new(Full::new(bytes.freeze()))
-}
-
-fn check_token(_params: CheckAuthTokenParams) -> Response<Full<Bytes>> {
-  result_to_response(CheckAuthTokenResult { result: true })
-}
-
-fn check_token_test(_params: CheckAuthTokenTestParams) -> Response<Full<Bytes>> {
-  result_to_response(CheckAuthTokenTestResult { result: true })
 }

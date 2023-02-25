@@ -1,4 +1,3 @@
-use bytes::Bytes;
 use http_body_util::Full;
 use hyper::{ body::Incoming, header::{ CONTENT_TYPE, HeaderValue }, Response, Request, StatusCode };
 use lazy_static::lazy_static;
@@ -7,13 +6,15 @@ use std::{
   collections::HashMap, io::{ Error, ErrorKind }, path::{ Component, Path, PathBuf }
 };
 use crate::settings::SETTINGS;
-use super::helpers::status_response;
+use super::{ HttpResponse, status_response };
 
 #[cfg(not(feature = "public_resources_caching"))]
 use std::path::MAIN_SEPARATOR;
 #[cfg(not(feature = "public_resources_caching"))]
 use tokio::fs::read;
 
+#[cfg(feature = "public_resources_caching")]
+use bytes::Bytes;
 #[cfg(feature = "public_resources_caching")]
 use hex::encode;
 #[cfg(feature = "public_resources_caching")]
@@ -30,7 +31,7 @@ use tokio::sync::Mutex;
 use walkdir::WalkDir;
 
 lazy_static! {
-  static ref MIME_TYPES: HashMap<&'static str, &'static str> = {
+  pub static ref MIME_TYPES: HashMap<&'static str, &'static str> = {
     let mut mime_types = HashMap::with_capacity(5);
     mime_types.insert("html", "text/html");
     mime_types.insert("js", "text/javascript");
@@ -93,8 +94,8 @@ lazy_static! {
 
 #[cfg(feature = "public_resources_caching")]
 async fn get_response_data(
-  path: String, mime_type: &str, req: Request<Incoming>
-) -> Result<Response<Full<Bytes>>, Error> {
+path: String, mime_type: &str, req: Request<Incoming>
+) -> Result<HttpResponse, Error> {
   let cache = PUBLIC_RESOURCES_CACHE.lock().await;
 
   match cache.get(&path) {
@@ -121,8 +122,8 @@ async fn get_response_data(
 
 #[cfg(not(feature = "public_resources_caching"))]
 async fn get_response_data(
-  path: String, mime_type: &str, _req: Request<Incoming>
-) -> Result<Response<Full<Bytes>>, Error> {
+  path: String, mime_type: &str, _: Request<Incoming>
+) -> Result<HttpResponse, Error> {
   let full_path = format!("{}{}{}", SETTINGS.public_resources_path, MAIN_SEPARATOR, path);
 
   match read(full_path).await {
@@ -138,7 +139,7 @@ async fn get_response_data(
   }
 }
 
-pub async fn serve(path: &str, req: Request<Incoming>) -> Response<Full<Bytes>> {
+pub async fn serve(path: &str, req: Request<Incoming>) -> HttpResponse {
   // Path analisis for special components exists
   let path = {
     let mut normalized = PathBuf::new();
