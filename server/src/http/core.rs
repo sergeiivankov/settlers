@@ -15,7 +15,7 @@ use crate::{ communicator::Communicator, helpers::exit_with_error, settings::SET
 use super::{
   api::{ ROUTES, api },
   serve::{ MIME_TYPES, serve },
-  ws::{ WEB_SOCKET_CONFIG, ws },
+  ws::{ CONNECTION_HEADER_VALUE, UPGRADE_HEADER_VALUE, WEB_SOCKET_CONFIG, ws },
   HttpResponse, status_response
 };
 
@@ -225,6 +225,8 @@ pub async fn start(communicator: Arc<Mutex<Communicator>>, stop_receiver: Receiv
   // to prevent slowdown first requests
   initialize(&ROUTES);
   initialize(&MIME_TYPES);
+  initialize(&CONNECTION_HEADER_VALUE);
+  initialize(&UPGRADE_HEADER_VALUE);
   initialize(&WEB_SOCKET_CONFIG);
   #[cfg(feature = "public_resources_caching")]
   initialize(&PUBLIC_RESOURCES_CACHE);

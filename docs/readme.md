@@ -16,4 +16,4 @@ TODO:
 
 - `secure_server` - enable HTTPS server, see `.env.example` for required parameters
 
-**Important:** using one of `db_...` features is required! By default `db_sqlite` is enabled. To use other database pass to cargo build or run command next flags: "--no-default-features --features settlers-server/db_..."
+IMPORTANT: using one of `db_...` features is required! By default `db_sqlite` is enabled. To use other database pass to cargo build or run command next flags: "--no-default-features --features settlers-server/db_..."

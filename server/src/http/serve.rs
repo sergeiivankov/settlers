@@ -1,5 +1,7 @@
 use http_body_util::Full;
-use hyper::{ body::Incoming, header::{ CONTENT_TYPE, HeaderValue }, Response, Request, StatusCode };
+use hyper::{
+  body::Incoming, header::{ CONTENT_TYPE, HeaderMap, HeaderValue }, Response, Request, StatusCode
+};
 use lazy_static::lazy_static;
 use log::debug;
 use std::{
@@ -29,15 +31,20 @@ use std::fs::read;
 use tokio::sync::Mutex;
 #[cfg(feature = "public_resources_caching")]
 use walkdir::WalkDir;
+#[cfg(feature = "public_resources_caching")]
+use crate::helpers::exit_with_error;
 
 lazy_static! {
   pub static ref MIME_TYPES: HashMap<&'static str, &'static str> = {
+    // IMPORTANT: increase capacity when new mime type will be added
     let mut mime_types = HashMap::with_capacity(5);
+
     mime_types.insert("html", "text/html");
     mime_types.insert("js", "text/javascript");
     mime_types.insert("css", "text/css");
     mime_types.insert("png", "image/png");
     mime_types.insert("wasm", "application/wasm");
+
     mime_types
   };
 }
@@ -45,51 +52,68 @@ lazy_static! {
 #[cfg(feature = "public_resources_caching")]
 lazy_static! {
   // Read all public resources files to cache on server start
-  // Values in HashMap is tuple with content hash and ready to return response body
-  pub static ref PUBLIC_RESOURCES_CACHE: Mutex<HashMap<String, (String, Full<Bytes>)>> = {
-    let mut cache = HashMap::new();
-
-    let mut hasher = Sha1::new();
+  // Values in HashMap is tuple with content hash ETAG HeaderValue and ready to return response body
+  pub static ref PUBLIC_RESOURCES_CACHE: Mutex<HashMap<String, (HeaderValue, Full<Bytes>)>> = {
+    let mut paths = Vec::new();
 
     for entry_result in WalkDir::new(&SETTINGS.public_resources_path) {
       match entry_result {
         Ok(entry) => {
-          let path = entry.path();
+          let path = entry.path().to_owned();
           if path.is_dir() {
             continue
           }
 
-          let path_str = match path.to_str() {
-            Some(path_str) => path_str,
-            None => {
-              error!("Convert path \"{}\" to str error", path.display());
-              continue
-            }
-          };
-
-          let content = match read(path) {
-            Ok(content) => content,
-            Err(err) => {
-              error!("Read file error: {}", err);
-              continue
-            }
-          };
-
-          hasher.update(&content);
-          let hash = hasher.finalize_reset();
-
-          cache.insert(
-            // Cut off path to public resources directory from full public resource path
-            String::from(&path_str[(SETTINGS.public_resources_path.len() + 1)..]),
-            (format!("\"{}\"", encode(hash)), Full::new(content.into()))
-          );
+          paths.push(path);
         },
         Err(err) => error!("Walk entry error: {}", err)
       }
     }
 
+    let mut cache = HashMap::with_capacity(paths.len());
+    let mut hasher = Sha1::new();
+
+    for path in &paths {
+      let path_str = match path.to_str() {
+        Some(path_str) => path_str,
+        None => {
+          error!("Convert path \"{}\" to str error", path.display());
+          continue
+        }
+      };
+
+      let content = match read(path) {
+        Ok(content) => content,
+        Err(err) => {
+          error!("Read file error: {}", err);
+          continue
+        }
+      };
+
+      hasher.update(&content);
+      let hash = hasher.finalize_reset();
+
+      let etag = HeaderValue::from_str(&format!("\"{}\"", encode(hash))).unwrap_or_else(|err| {
+        exit_with_error(format!("Create \"Etag\" header error: {}", err))
+      });
+
+      cache.insert(
+        // Cut off path to public resources directory from full public resource path
+        String::from(&path_str[(SETTINGS.public_resources_path.len() + 1)..]),
+        (etag, Full::new(content.into()))
+      );
+    }
+
     Mutex::new(cache)
   };
+}
+
+fn insert_mime_type(headers: &mut HeaderMap, mime_type: &str) {
+  // mime_type variable may contain only "application/octet-stream" or values
+  // from MIME_TYPES static ref, all these possible values not contain
+  // invalid header value characters, so we can use unwrap_unchecked
+  let mime_type_value = HeaderValue::from_str(mime_type);
+  headers.insert(CONTENT_TYPE, unsafe { mime_type_value.unwrap_unchecked() });
 }
 
 #[cfg(feature = "public_resources_caching")]
@@ -111,8 +135,8 @@ path: String, mime_type: &str, req: Request<Incoming>
       let mut response = Response::new(body.clone());
 
       let headers = response.headers_mut();
-      headers.insert(CONTENT_TYPE, HeaderValue::from_str(mime_type).unwrap());
-      headers.insert(ETAG, HeaderValue::from_str(hash).unwrap());
+      headers.insert(ETAG, hash.clone());
+      insert_mime_type(headers, mime_type);
 
       Ok(response)
     },
@@ -128,10 +152,8 @@ async fn get_response_data(
 
   match read(full_path).await {
     Ok(content) => {
-      let header_value = HeaderValue::from_str(mime_type).unwrap();
-
       let mut response = Response::new(Full::new(content.into()));
-      response.headers_mut().insert(CONTENT_TYPE, header_value);
+      insert_mime_type(response.headers_mut(), mime_type);
 
       Ok(response)
     },

@@ -3,7 +3,7 @@ use dirs::config_dir;
 use log::{ debug, info };
 use serde_path_to_error::deserialize;
 use std::{ fs::metadata, io::{ Error, ErrorKind }, path::PathBuf };
-use crate::helpers::{ CURRENT_PATH, exit_with_error, prepare_check_path };
+use crate::helpers::{ CURRENT_PATH, exit_with_error };
 use super::structs::Settings;
 
 fn check_config_path(path: PathBuf) -> Option<PathBuf> {
@@ -59,6 +59,32 @@ fn try_add_file_source(
 
   info!("Config source added \"{}\"", path_str);
   builder.add_source(File::with_name(path_str))
+}
+
+fn prepare_check_path(path_string: &String, must_be_file: bool) -> String {
+  let mut path = PathBuf::from(&path_string);
+
+  path = if path.is_relative() { CURRENT_PATH.join(path_string) } else { path };
+
+  // Return NotFound error kind for non-existent file,
+  // so canonicalize - it also a check for existence
+  path = path.canonicalize().unwrap_or_else(|_| {
+    exit_with_error(format!("Path \"{}\" not exists", path.display()))
+  });
+
+  if path.is_file() != must_be_file {
+    if must_be_file {
+      exit_with_error(format!("Path \"{}\" must point to file", path.display()))
+    } else {
+      exit_with_error(format!("Path \"{}\" must point to directory", path.display()))
+    }
+  }
+
+  let path_str = path.to_str().unwrap_or_else(|| {
+    exit_with_error(format!("Convert path \"{}\" to str error", path.display()))
+  });
+
+  String::from(path_str)
 }
 
 fn default(settings: &mut Settings) {

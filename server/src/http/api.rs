@@ -19,11 +19,12 @@ type Routes = HashMap<
 >;
 
 // Maximum API request HTTP body size
-// Important: for profile picture upload method use main HTTP body limit
+// IMPORTANT: for profile picture upload method use main HTTP body limit
 const MAX_API_BODY_SIZE: u64 = 1024;
 
 lazy_static! {
   pub static ref ROUTES: Routes = {
+    // IMPORTANT: increase capacity when new route will be added
     let mut routes: Routes = HashMap::with_capacity(2);
 
     routes.insert("check_token", Box::new(|bytes| Ok(check_token(bytes_to_params(bytes)?))));

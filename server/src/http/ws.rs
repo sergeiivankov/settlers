@@ -20,7 +20,7 @@ use tokio_tungstenite::{
   },
   WebSocketStream
 };
-use crate::communicator::Communicator;
+use crate::{ communicator::Communicator, helpers::exit_with_error };
 use super::{ HttpResponse, status_response };
 
 // Maximum WebSocket message size
@@ -35,6 +35,12 @@ lazy_static! {
     max_frame_size: Some(MAX_WEB_SOCKET_MESSAGE_SIZE),
     accept_unmasked_frames: false
   };
+
+  pub static ref CONNECTION_HEADER_VALUE: HeaderValue = HeaderValue::from_str("Upgrade")
+    .unwrap_or_else(|err| exit_with_error(format!("Create \"Connection\" header error: {}", err)));
+
+  pub static ref UPGRADE_HEADER_VALUE: HeaderValue = HeaderValue::from_str("websocket")
+    .unwrap_or_else(|err| exit_with_error(format!("Create \"Upgrade\" header error: {}", err)));
 }
 
 fn get_header_str(name: HeaderName, headers: &HeaderMap) -> Option<&str> {
@@ -146,7 +152,8 @@ pub async fn ws(
     return status_response(StatusCode::BAD_REQUEST)
   }
 
-  let derived = derive_accept_key(key.unwrap().as_bytes());
+  // In previous condition block we check is key is None, so we can use unwrap_unchecked
+  let derived = derive_accept_key(unsafe { key.unwrap_unchecked() }.as_bytes());
 
   spawn(async move {
     match on(&mut req).await {
@@ -163,9 +170,13 @@ pub async fn ws(
   *response.status_mut() = StatusCode::SWITCHING_PROTOCOLS;
 
   let headers = response.headers_mut();
-  headers.insert(CONNECTION, HeaderValue::from_str("Upgrade").unwrap());
-  headers.insert(UPGRADE, HeaderValue::from_str("websocket").unwrap());
-  headers.insert(SEC_WEBSOCKET_ACCEPT, HeaderValue::from_str(&derived).unwrap());
+  headers.insert(CONNECTION, CONNECTION_HEADER_VALUE.clone());
+  headers.insert(UPGRADE, UPGRADE_HEADER_VALUE.clone());
+
+  // derived contains hash encoded in base64 with standart alphabet, which contain
+  // only valid header value characters, so we can use unwrap_unchecked
+  let accept_value = HeaderValue::from_str(&derived);
+  headers.insert(SEC_WEBSOCKET_ACCEPT, unsafe { accept_value.unwrap_unchecked() });
 
   response
 }
