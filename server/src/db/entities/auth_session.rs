@@ -6,7 +6,7 @@ use sea_orm::{
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
 #[sea_orm(table_name = "auths_sessions")]
 pub struct Model {
-  #[sea_orm(primary_key, auto_increment = false, column_type = "Char(Some(64))")]
+  #[sea_orm(primary_key, auto_increment = false, column_type = "Char(Some(40))")]
   pub token: String,
   #[sea_orm(indexed)]
   pub user_id: u32,

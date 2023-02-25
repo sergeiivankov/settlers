@@ -10,8 +10,8 @@ pub struct Model {
   pub id: u32,
   #[sea_orm(unique, column_type = "String(Some(32))")]
   pub name: String,
-  #[sea_orm(column_type = "Char(Some(32))")]
-  pub photo: String,
+  #[sea_orm(column_type = "Char(Some(40))")]
+  pub picture: String,
   pub tag: u16
 }
 

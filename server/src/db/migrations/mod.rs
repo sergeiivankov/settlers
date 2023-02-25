@@ -6,7 +6,7 @@ use sea_orm::{ schema::Schema, EntityTrait };
 use sea_orm_migration::{
   async_trait::async_trait, manager::SchemaManager, migrator::MigratorTrait, DbErr, MigrationTrait
 };
-use sea_query::{ index::IndexCreateStatement, table::{ TableCreateStatement, TableDropStatement } };
+use sea_query::{ index::IndexCreateStatement, table::TableCreateStatement };
 
 type MigrationResult = Result<(), DbErr>;
 
@@ -38,7 +38,9 @@ where
   (table_create_stmt, index_create_stmts)
 }
 
-async fn simple_up<E>(manager: &SchemaManager<'_>, entity: E) -> MigrationResult
+// TODO: for first stable release remove and rewrite migrations to manual creation using statements
+//       to later creation modifying base tables migrations and changing entities
+async fn up_from_entity<E>(manager: &SchemaManager<'_>, entity: E) -> MigrationResult
 where
   E: EntityTrait
 {
@@ -50,26 +52,4 @@ where
   }
 
   Ok(())
-}
-
-async fn simple_down<E>(manager: &SchemaManager<'_>, entity: E) -> MigrationResult
-where
-  E: EntityTrait
-{
-  let table_create_stmt = create_statements(manager, entity).0;
-
-  let table_name = match table_create_stmt.get_table_name() {
-    Some(table_name) => table_name,
-    None => return Err(DbErr::Custom(String::from(
-      "Get table name from TableCreateStatement error"
-    )))
-  }.to_owned();
-
-  let table_drop_stmt = TableDropStatement::new()
-    .table(table_name)
-    .cascade()
-    .if_exists()
-    .to_owned();
-
-  manager.drop_table(table_drop_stmt).await
 }
