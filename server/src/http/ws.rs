@@ -10,38 +10,19 @@ use hyper::{
   upgrade::{ Upgraded, on },
   Method, Request, Response, StatusCode, Version
 };
-use lazy_static::lazy_static;
 use log::{ debug, error };
 use std::sync::Arc;
 use tokio::{ sync::Mutex, task::spawn, select };
 use tokio_tungstenite::{
   tungstenite::{
-    handshake::derive_accept_key, protocol::{ Role, WebSocketConfig }, Error, Message
+    handshake::derive_accept_key, protocol::Role, Error, Message
   },
   WebSocketStream
 };
-use crate::{ communicator::Communicator, helpers::exit_with_error };
-use super::{ HttpResponse, status_response };
-
-// Maximum WebSocket message size
-// In the future, it can be increased depending on the maximum size
-// of data transmitted in one message
-const MAX_WEB_SOCKET_MESSAGE_SIZE: usize = 1024;
-
-lazy_static! {
-  pub static ref WEB_SOCKET_CONFIG: WebSocketConfig = WebSocketConfig {
-    max_send_queue: None,
-    max_message_size: Some(MAX_WEB_SOCKET_MESSAGE_SIZE),
-    max_frame_size: Some(MAX_WEB_SOCKET_MESSAGE_SIZE),
-    accept_unmasked_frames: false
-  };
-
-  pub static ref CONNECTION_HEADER_VALUE: HeaderValue = HeaderValue::from_str("Upgrade")
-    .unwrap_or_else(|err| exit_with_error(format!("Create \"Connection\" header error: {}", err)));
-
-  pub static ref UPGRADE_HEADER_VALUE: HeaderValue = HeaderValue::from_str("websocket")
-    .unwrap_or_else(|err| exit_with_error(format!("Create \"Upgrade\" header error: {}", err)));
-}
+use crate::communicator::Communicator;
+use super::helpers::{
+  WEB_SOCKET_CONFIG, HttpResponse, PreBuiltHeader, header_value, status_response
+};
 
 fn get_header_str(name: HeaderName, headers: &HeaderMap) -> Option<&str> {
   match headers.get(&name) {
@@ -134,12 +115,12 @@ pub async fn ws(
 ) -> HttpResponse {
   let version = req.version();
   let headers = req.headers();
-  let key = headers.get(SEC_WEBSOCKET_KEY);
+  let key_option = headers.get(SEC_WEBSOCKET_KEY);
 
   if req.method() != Method::GET
   || version != Version::HTTP_11
   || path != ""
-  || key.is_none()
+  || key_option.is_none()
   || get_header_str(CONNECTION, &headers)
        .map(|s| s.split(&[' ', ',']).any(|p| p.eq_ignore_ascii_case("upgrade")))
        .unwrap_or(false) == false
@@ -152,8 +133,9 @@ pub async fn ws(
     return status_response(StatusCode::BAD_REQUEST)
   }
 
-  // In previous condition block we check is key is None, so we can use unwrap_unchecked
-  let derived = derive_accept_key(unsafe { key.unwrap_unchecked() }.as_bytes());
+  // SAFETY: in previous condition block check that key is None and in this case function terminates
+  let key = unsafe { key_option.unwrap_unchecked() };
+  let derived = derive_accept_key(key.as_bytes());
 
   spawn(async move {
     match on(&mut req).await {
@@ -166,17 +148,19 @@ pub async fn ws(
   });
 
   let mut response = Response::new(Full::new(Bytes::new()));
+
   *response.version_mut() = version;
   *response.status_mut() = StatusCode::SWITCHING_PROTOCOLS;
 
   let headers = response.headers_mut();
-  headers.insert(CONNECTION, CONNECTION_HEADER_VALUE.clone());
-  headers.insert(UPGRADE, UPGRADE_HEADER_VALUE.clone());
+  headers.insert(CONNECTION, header_value(PreBuiltHeader::Upgrade));
+  headers.insert(UPGRADE, header_value(PreBuiltHeader::WebSocket));
 
-  // derived contains hash encoded in base64 with standart alphabet, which contain
-  // only valid header value characters, so we can use unwrap_unchecked
-  let accept_value = HeaderValue::from_str(&derived);
-  headers.insert(SEC_WEBSOCKET_ACCEPT, unsafe { accept_value.unwrap_unchecked() });
+  let accept_value_result = HeaderValue::from_str(&derived);
+  // SAFETY: derived contains only base64 standart alphabet symbols,
+  //         which are valid header value characters
+  let accept_value = unsafe { accept_value_result.unwrap_unchecked() };
+  headers.insert(SEC_WEBSOCKET_ACCEPT, accept_value);
 
   response
 }

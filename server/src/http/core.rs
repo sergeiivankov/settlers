@@ -1,9 +1,9 @@
 use hyper::{
-  body::{ Body, Incoming }, server::conn::http1::Builder,
+  body::{ Body, Incoming }, header::{ CACHE_CONTROL, EXPIRES }, server::conn::http1::Builder,
   service::Service as HyperService, Request, StatusCode
 };
 use lazy_static::initialize;
-use log::{ debug, info, error };
+use log::{ debug, info };
 use std::{
   convert::Infallible, future::Future, marker::Unpin, net::SocketAddr, pin::Pin, sync::Arc
 };
@@ -13,10 +13,13 @@ use tokio::{
 };
 use crate::{ communicator::Communicator, helpers::exit_with_error, settings::SETTINGS };
 use super::{
-  api::{ ROUTES, api },
-  serve::{ MIME_TYPES, serve },
-  ws::{ CONNECTION_HEADER_VALUE, UPGRADE_HEADER_VALUE, WEB_SOCKET_CONFIG, ws },
-  HttpResponse, status_response
+  api::{ ROUTE_HANDLERS, api },
+  helpers::{
+    MAX_HTTP_BODY_SIZE, HEADER_VALUES, MIME_TYPES, WEB_SOCKET_CONFIG,
+    HttpResponse, PreBuiltHeader, header_value, status_response
+  },
+  serve::serve,
+  ws::ws
 };
 
 #[cfg(feature = "public_resources_caching")]
@@ -28,11 +31,6 @@ use rustls_pemfile::{ certs, rsa_private_keys };
 use tokio_rustls::{ rustls::{ Certificate, PrivateKey, ServerConfig }, TlsAcceptor };
 #[cfg(feature = "secure_server")]
 use std::{ fs::File, io::BufReader };
-
-// Maximum HTTP body size
-// Maximum client payload would be a profile picture upload,
-// so 128 KiB should be enough for 160x160 png image, cropped by circle
-pub const MAX_HTTP_BODY_SIZE: u64 = 128 * 1024;
 
 #[derive(Clone)]
 struct Service {
@@ -82,7 +80,17 @@ async fn handle_connection(
 
   match section {
     "public" => serve(subpath, req).await,
-    "api" => api(subpath, req, body_size).await,
+    "api" => {
+      let mut response = api(subpath, req, body_size).await;
+      let headers = response.headers_mut();
+
+      // Disable caching for API requests for browsers and HTTP 1.0 proxies
+      // (see https://stackoverflow.com/a/2068407)
+      headers.insert(CACHE_CONTROL, header_value(PreBuiltHeader::DisableCache));
+      headers.insert(EXPIRES, header_value(PreBuiltHeader::Zero));
+
+      response
+    },
     "ws" => ws(subpath, req, communicator).await,
     _ => status_response(StatusCode::NOT_FOUND)
   }
@@ -164,7 +172,7 @@ where
     .serve_connection(stream, service)
     .with_upgrades();
 
-  connection.await.unwrap_or_else(|err| error!("Handle connection error: {}", err));
+  connection.await.unwrap_or_else(|err| debug!("Handle connection error: {}", err));
 }
 
 #[cfg(feature = "secure_server")]
@@ -223,11 +231,10 @@ pub async fn start(communicator: Arc<Mutex<Communicator>>, stop_receiver: Receiv
 
   // Initialize lazy static refs before server start accept connections
   // to prevent slowdown first requests
-  initialize(&ROUTES);
-  initialize(&MIME_TYPES);
-  initialize(&CONNECTION_HEADER_VALUE);
-  initialize(&UPGRADE_HEADER_VALUE);
   initialize(&WEB_SOCKET_CONFIG);
+  initialize(&HEADER_VALUES);
+  initialize(&MIME_TYPES);
+  initialize(&ROUTE_HANDLERS);
   #[cfg(feature = "public_resources_caching")]
   initialize(&PUBLIC_RESOURCES_CACHE);
 

@@ -30,6 +30,7 @@ sea-query = "0.28.3"
 serde = { version = "1.0.152", features = ["derive"] }
 serde_path_to_error = "0.1.9"
 sha-1 = { version = "0.10.1", optional = true }
+strum = { version = "0.24.1", features = ["derive"] }
 tokio = { version = "1.25.0", features = ["rt-multi-thread", "net", "fs", "signal", "sync", "macros"] }
 tokio-rustls = { version = "0.23.4", default-features = false, features = ["dangerous_configuration"], optional = true }
 tokio-tungstenite = { version = "0.18.0", default-features = false, features = ["handshake"] }

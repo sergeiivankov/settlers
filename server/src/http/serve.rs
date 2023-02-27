@@ -1,14 +1,11 @@
 use http_body_util::Full;
 use hyper::{
-  body::Incoming, header::{ CONTENT_TYPE, HeaderMap, HeaderValue }, Response, Request, StatusCode
+  body::Incoming, header::{ CONTENT_TYPE, HeaderValue }, Response, Request, StatusCode
 };
-use lazy_static::lazy_static;
 use log::debug;
-use std::{
-  collections::HashMap, io::{ Error, ErrorKind }, path::{ Component, Path, PathBuf }
-};
+use std::{ io::{ Error, ErrorKind }, path::{ Component, Path, PathBuf } };
 use crate::settings::SETTINGS;
-use super::{ HttpResponse, status_response };
+use super::helpers::{ MIME_TYPES, HttpResponse, PreBuiltHeader, header_value, status_response };
 
 #[cfg(not(feature = "public_resources_caching"))]
 use std::path::MAIN_SEPARATOR;
@@ -22,32 +19,19 @@ use hex::encode;
 #[cfg(feature = "public_resources_caching")]
 use hyper::header::{ ETAG, IF_NONE_MATCH };
 #[cfg(feature = "public_resources_caching")]
+use lazy_static::lazy_static;
+#[cfg(feature = "public_resources_caching")]
 use log::error;
 #[cfg(feature = "public_resources_caching")]
 use sha1::{ Sha1, Digest };
 #[cfg(feature = "public_resources_caching")]
-use std::fs::read;
+use std::{ collections::HashMap, fs::read };
 #[cfg(feature = "public_resources_caching")]
 use tokio::sync::Mutex;
 #[cfg(feature = "public_resources_caching")]
 use walkdir::WalkDir;
 #[cfg(feature = "public_resources_caching")]
 use crate::helpers::exit_with_error;
-
-lazy_static! {
-  pub static ref MIME_TYPES: HashMap<&'static str, &'static str> = {
-    // IMPORTANT: increase capacity when new mime type will be added
-    let mut mime_types = HashMap::with_capacity(5);
-
-    mime_types.insert("html", "text/html");
-    mime_types.insert("js", "text/javascript");
-    mime_types.insert("css", "text/css");
-    mime_types.insert("png", "image/png");
-    mime_types.insert("wasm", "application/wasm");
-
-    mime_types
-  };
-}
 
 #[cfg(feature = "public_resources_caching")]
 lazy_static! {
@@ -93,8 +77,9 @@ lazy_static! {
       hasher.update(&content);
       let hash = hasher.finalize_reset();
 
-      let etag = HeaderValue::from_str(&format!("\"{}\"", encode(hash))).unwrap_or_else(|err| {
-        exit_with_error(format!("Create \"Etag\" header error: {}", err))
+      let encoded_hash = encode(hash);
+      let etag = HeaderValue::from_str(&format!("\"{}\"", encoded_hash)).unwrap_or_else(|_| {
+        exit_with_error(format!("Create \"Etag\" header value error: {}", encoded_hash))
       });
 
       cache.insert(
@@ -108,17 +93,9 @@ lazy_static! {
   };
 }
 
-fn insert_mime_type(headers: &mut HeaderMap, mime_type: &str) {
-  // mime_type variable may contain only "application/octet-stream" or values
-  // from MIME_TYPES static ref, all these possible values not contain
-  // invalid header value characters, so we can use unwrap_unchecked
-  let mime_type_value = HeaderValue::from_str(mime_type);
-  headers.insert(CONTENT_TYPE, unsafe { mime_type_value.unwrap_unchecked() });
-}
-
 #[cfg(feature = "public_resources_caching")]
 async fn get_response_data(
-path: String, mime_type: &str, req: Request<Incoming>
+path: String, mime_type: HeaderValue, req: Request<Incoming>
 ) -> Result<HttpResponse, Error> {
   let cache = PUBLIC_RESOURCES_CACHE.lock().await;
 
@@ -135,8 +112,8 @@ path: String, mime_type: &str, req: Request<Incoming>
       let mut response = Response::new(body.clone());
 
       let headers = response.headers_mut();
+      headers.insert(CONTENT_TYPE, mime_type);
       headers.insert(ETAG, hash.clone());
-      insert_mime_type(headers, mime_type);
 
       Ok(response)
     },
@@ -146,14 +123,14 @@ path: String, mime_type: &str, req: Request<Incoming>
 
 #[cfg(not(feature = "public_resources_caching"))]
 async fn get_response_data(
-  path: String, mime_type: &str, _: Request<Incoming>
+  path: String, mime_type: HeaderValue, _: Request<Incoming>
 ) -> Result<HttpResponse, Error> {
   let full_path = format!("{}{}{}", SETTINGS.public_resources_path, MAIN_SEPARATOR, path);
 
   match read(full_path).await {
     Ok(content) => {
       let mut response = Response::new(Full::new(content.into()));
-      insert_mime_type(response.headers_mut(), mime_type);
+      response.headers_mut().insert(CONTENT_TYPE, mime_type);
 
       Ok(response)
     },
@@ -162,38 +139,42 @@ async fn get_response_data(
 }
 
 pub async fn serve(path: &str, req: Request<Incoming>) -> HttpResponse {
-  // Path analisis for special components exists
   let path = {
-    let mut normalized = PathBuf::new();
+    let mut normalized_path = PathBuf::new();
 
+    // Path analisis for special components exists
     for component in Path::new(path).components() {
       match component {
         Component::Prefix(_) | Component::CurDir | Component::RootDir | Component::ParentDir => {
           debug!("Found special path component {:?} in \"{}\"", component, path);
           return status_response(StatusCode::NOT_FOUND)
         },
-        Component::Normal(c) => normalized.push(c)
+        Component::Normal(c) => normalized_path.push(c)
       };
     }
 
-    normalized
+    let path_str = match normalized_path.to_str() {
+      Some(path_str) => path_str,
+      None => {
+        debug!("Convert path \"{}\" to str error", normalized_path.display());
+        return status_response(StatusCode::INTERNAL_SERVER_ERROR)
+      }
+    };
+
+    String::from(path_str)
   };
 
-  let path = match path.to_str() {
-    Some(path) => path,
-    None => {
-      debug!("Convert path \"{}\" to str error", path.display());
-      return status_response(StatusCode::INTERNAL_SERVER_ERROR)
+  let mime_type = {
+    let ext = match path.rsplit_once('.') {
+      Some(parts) => parts.1,
+      None => ""
+    };
+
+    match MIME_TYPES.get(ext) {
+      Some(mime_type) => mime_type.clone(),
+      None => header_value(PreBuiltHeader::AppOctetStream)
     }
   };
-
-  let path = String::from(path);
-
-  let ext = match path.rsplit_once('.') {
-    Some(parts) => parts.1,
-    None => ""
-  };
-  let mime_type = MIME_TYPES.get(ext).unwrap_or(&"application/octet-stream");
 
   match get_response_data(path, mime_type, req).await {
     Ok(response) => response,
