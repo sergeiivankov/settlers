@@ -1,18 +1,18 @@
 syntax = "proto3";
 package auth;
 
-message CheckAuthTokenParams {
-  string token = 1;
+message CheckTokenParams {
+  required string token = 1;
 }
 
-message CheckAuthTokenResult {
-  bool result = 1;
+message CheckTokenResult {
+  required bool result = 1;
 }
 
-message CheckAuthTokenTestParams {
-  string token = 1;
+message CheckTokenTestParams {
+  required string token = 1;
 }
 
-message CheckAuthTokenTestResult {
-  bool result = 1;
+message CheckTokenTestResult {
+  required bool result = 1;
 }

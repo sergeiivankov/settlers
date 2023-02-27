@@ -5,10 +5,7 @@ use lazy_static::lazy_static;
 use log::debug;
 use std::collections::HashMap;
 use crate::protos::{
-  auth::{
-    CheckAuthTokenParams, CheckAuthTokenResult,
-    CheckAuthTokenTestParams, CheckAuthTokenTestResult
-  },
+  auth::{ CheckTokenParams, CheckTokenResult, CheckTokenTestParams, CheckTokenTestResult },
   bytes_to_params, result_to_response
 };
 use super::{ HttpResponse, status_response };
@@ -34,12 +31,12 @@ lazy_static! {
   };
 }
 
-fn check_token(_params: CheckAuthTokenParams) -> HttpResponse {
-  result_to_response(CheckAuthTokenResult { result: true })
+fn check_token(_params: CheckTokenParams) -> HttpResponse {
+  result_to_response(CheckTokenResult { result: true })
 }
 
-fn check_token_test(_params: CheckAuthTokenTestParams) -> HttpResponse {
-  result_to_response(CheckAuthTokenTestResult { result: true })
+fn check_token_test(_params: CheckTokenTestParams) -> HttpResponse {
+  result_to_response(CheckTokenTestResult { result: true })
 }
 
 pub async fn api(path: &str, req: Request<Incoming>, body_size: u64) -> HttpResponse {
