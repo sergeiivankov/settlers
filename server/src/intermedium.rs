@@ -22,10 +22,8 @@ impl Intermedium {
   }
 
   async fn receive(&mut self) -> Data {
-    match self.receiver.recv().await {
-      Some(data) => data,
-      None => exit_with_error(String::from("All peers messages senders are dropped"))
-    }
+    self.receiver.recv().await
+      .unwrap_or_else(|| exit_with_error(String::from("All peers messages senders are dropped")))
   }
 
   pub async fn run(&mut self, mut stop_receiver: OneshotReceiver<()>) {

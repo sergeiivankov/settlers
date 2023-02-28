@@ -3,6 +3,8 @@ use sea_orm::{
   DeriveRelation, EntityTrait, EnumIter, PrimaryKeyTrait
 };
 
+// Eq trait not required for used in DeriveEntityModel enums
+#[allow(clippy::derive_partial_eq_without_eq)]
 #[derive(Clone, Debug, PartialEq, EnumIter, DeriveActiveEnum)]
 #[sea_orm(rs_type = "u8", db_type = "TinyUnsigned")]
 pub enum Method {
@@ -11,7 +13,7 @@ pub enum Method {
   Telegram = 2
 }
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+#[derive(Clone, Debug, DeriveEntityModel)]
 #[sea_orm(table_name = "auths_methods")]
 pub struct Model {
   #[sea_orm(primary_key)]

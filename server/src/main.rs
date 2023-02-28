@@ -1,7 +1,7 @@
 #![deny(clippy::all)]
 //#![deny(clippy::pedantic)]
 //#![deny(clippy::restriction)]
-//#![deny(clippy::nursery)]
+#![deny(clippy::nursery)]
 #![deny(clippy::cargo)]
 
 // Project will not publiched on crates.io, so no need for fields "keywords" and "categories"

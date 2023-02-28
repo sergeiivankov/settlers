@@ -3,7 +3,7 @@ use sea_orm::{
   DeriveRelation, EntityTrait, EnumIter, PrimaryKeyTrait
 };
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+#[derive(Clone, Debug, DeriveEntityModel)]
 #[sea_orm(table_name = "auths_sessions")]
 pub struct Model {
   #[sea_orm(primary_key, auto_increment = false, column_type = "Char(Some(40))")]

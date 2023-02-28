@@ -17,13 +17,13 @@ impl Communicator {
   pub fn new() -> (Arc<Mutex<Self>>, Receiver) {
     let (sender, receiver) = unbounded_channel();
 
-    let this = Self {
+    let communicator = Self {
       rng: Rng::new(),
       peers: HashMap::new(),
       sender
     };
 
-    (Arc::new(Mutex::new(this)), receiver)
+    (Arc::new(Mutex::new(communicator)), receiver)
   }
 
   pub fn add(&mut self) -> (u32, Sender, UnboundedReceiver<String>) {

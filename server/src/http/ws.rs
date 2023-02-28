@@ -14,10 +14,7 @@ use log::{ debug, error };
 use std::sync::Arc;
 use tokio::{ sync::Mutex, task::spawn, select };
 use tokio_tungstenite::{
-  tungstenite::{
-    handshake::derive_accept_key, protocol::Role, Error, Message
-  },
-  WebSocketStream
+  tungstenite::{ handshake::derive_accept_key, protocol::Role, Error, Message }, WebSocketStream
 };
 use crate::communicator::Communicator;
 use super::helpers::{
@@ -25,16 +22,13 @@ use super::helpers::{
 };
 
 fn get_header_str(name: HeaderName, headers: &HeaderMap) -> Option<&str> {
-  match headers.get(&name) {
-    Some(value) => match value.to_str() {
-      Ok(value) => Some(value),
-      Err(err) => {
-        debug!("Convert header \"{}\" to str error: {}", name, err);
-        None
-      }
-    },
-    None => None
-  }
+  headers.get(&name).and_then(|value| match value.to_str() {
+    Ok(value) => Some(value),
+    Err(err) => {
+      debug!("Convert header \"{}\" to str error: {}", name, err);
+      None
+    }
+  })
 }
 
 async fn handle_connection(

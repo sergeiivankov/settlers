@@ -68,10 +68,8 @@ async fn handle_connection(
   let path = uri.path().get(1..).unwrap_or("");
 
   let (section, subpath) = {
-    match path.split_once('/') {
-      Some(parts) => parts,
-      None => if path.is_empty() { ("public", "index.html") } else { (path, "") }
-    }
+    path.split_once('/')
+      .unwrap_or(if path.is_empty() { ("public", "index.html") } else { (path, "") })
   };
 
   match section {
@@ -137,7 +135,7 @@ fn create_additional_acceptor() -> Arc<Mutex<TlsAcceptor>> {
 }
 
 #[cfg(not(feature = "secure_server"))]
-fn create_additional_acceptor() {}
+const fn create_additional_acceptor() {}
 
 async fn create_tcp_listener(addr: SocketAddr) -> TcpListener {
   let listener = TcpListener::bind(addr).await.unwrap_or_else(|err| {

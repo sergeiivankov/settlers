@@ -3,7 +3,7 @@ use sea_orm::{
   PrimaryKeyTrait
 };
 
-#[derive(Clone, Debug, PartialEq, DeriveEntityModel)]
+#[derive(Clone, Debug, DeriveEntityModel)]
 #[sea_orm(table_name = "users")]
 pub struct Model {
   #[sea_orm(primary_key)]

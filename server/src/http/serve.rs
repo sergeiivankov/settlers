@@ -94,15 +94,12 @@ lazy_static! {
 }
 
 fn get_mime_type(path: &str) -> HeaderValue {
-  let ext = match path.rsplit_once('.') {
-    Some(parts) => parts.1,
-    None => ""
-  };
+  let ext = path.rsplit_once('.').map_or("", |parts| parts.1);
 
-  match MIME_TYPES.get(ext) {
-    Some(mime_type) => mime_type.clone(),
-    None => header_value(PreBuiltHeader::ApplicationOctetStream)
-  }
+  MIME_TYPES.get(ext).map_or_else(
+    || header_value(PreBuiltHeader::ApplicationOctetStream),
+    |mime_type| mime_type.clone()
+  )
 }
 
 #[cfg(feature = "public_resources_caching")]

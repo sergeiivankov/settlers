@@ -31,10 +31,7 @@ fn search_config_current_recurse(directory: &Path) -> Option<PathBuf> {
     return Some(path)
   }
 
-  match directory.parent() {
-    Some(parent) => search_config_current_recurse(parent),
-    None => None
-  }
+  directory.parent().and_then(search_config_current_recurse)
 }
 
 fn try_add_file_source(
@@ -87,7 +84,7 @@ fn prepare_check_path(path_string: &String, must_be_file: bool) -> String {
 }
 
 fn default(settings: &mut Settings) {
-  settings.log = settings.log.clone().or(Some(String::from("error")));
+  settings.log = settings.log.clone().or_else(|| Some(String::from("error")));
 
   settings.database.min_connections = settings.database.min_connections.or(Some(1));
   settings.database.max_connections = settings.database.max_connections.or(Some(32));
@@ -117,6 +114,9 @@ pub fn init() -> Settings {
     builder = try_add_file_source(builder, path, true);
   }
 
+  // In Some variant local variable `builder` rewrites,
+  // so Option::map_or_else with closures is not work
+  #[allow(clippy::option_if_let_else)]
   match search_config_current_recurse(&CURRENT_PATH) {
     Some(path) => builder = try_add_file_source(builder, path, false),
     None => debug!("Config file not found in current directory tree")
