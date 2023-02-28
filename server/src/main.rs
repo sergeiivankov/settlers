@@ -4,6 +4,7 @@
 //#![deny(clippy::nursery)]
 #![deny(clippy::cargo)]
 
+// Project will not publiched on crates.io, so no need for fields "keywords" and "categories"
 #![allow(clippy::cargo_common_metadata)]
 
 // TODO: design project repository

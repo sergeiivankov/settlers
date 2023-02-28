@@ -109,7 +109,7 @@ pub async fn ws(
 
   if req.method() != Method::GET
   || version != Version::HTTP_11
-  || path.is_empty()
+  || !path.is_empty()
   || key_option.is_none()
   || !get_header_str(CONNECTION, headers)
        .map(|s| s.split(&[' ', ',']).any(|p| p.eq_ignore_ascii_case("upgrade")))
