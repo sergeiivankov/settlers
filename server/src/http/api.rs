@@ -56,7 +56,6 @@ pub async fn api(path: &str, req: Request<Incoming>, body_size: u64) -> HttpResp
   debug!("Received HTTP body for \"{}\": {:?}", path, body);
 
   let route_handler_option = ROUTE_HANDLERS.get(path);
-
   // SAFETY: at start of function we checked that ROUTES contains passed `path` key
   let route_handler = unsafe { route_handler_option.unwrap_unchecked() };
 

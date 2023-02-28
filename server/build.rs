@@ -9,8 +9,8 @@ fn main() {
   let in_dir = Path::new(&var("CARGO_MANIFEST_DIR").unwrap()).parent().unwrap().join("protos");
 
   let mut protos = Vec::new();
-  for entry in WalkDir::new(&in_dir) {
-    let path = entry.unwrap().into_path();
+  for entry_result in WalkDir::new(&in_dir) {
+    let path = entry_result.unwrap().into_path();
     if path.is_file() {
       protos.push(path);
     }
