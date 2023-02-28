@@ -2,7 +2,7 @@ use config::{ builder::DefaultState, Config, ConfigBuilder, Environment, File };
 use dirs::config_dir;
 use log::{ debug, info };
 use serde_path_to_error::deserialize;
-use std::{ fs::metadata, io::{ Error, ErrorKind }, path::PathBuf };
+use std::{ fs::metadata, io::{ Error, ErrorKind }, path::{ Path, PathBuf } };
 use crate::helpers::{ CURRENT_PATH, exit_with_error };
 use super::structs::Settings;
 
@@ -24,16 +24,15 @@ fn check_config_path(path: PathBuf) -> Option<PathBuf> {
   exit_with_error(format!("Read config file \"{}\" error: {}", path.display(), err))
 }
 
-fn search_config_current_recurse(directory: &PathBuf) -> Option<PathBuf> {
+fn search_config_current_recurse(directory: &Path) -> Option<PathBuf> {
   let path = directory.join("settlers.toml");
 
-  match check_config_path(path) {
-    Some(path) => return Some(path),
-    None => {}
+  if let Some(path) = check_config_path(path) {
+    return Some(path)
   }
 
   match directory.parent() {
-    Some(parent) => search_config_current_recurse(&parent.to_path_buf()),
+    Some(parent) => search_config_current_recurse(parent),
     None => None
   }
 }
@@ -113,15 +112,12 @@ pub fn init() -> Settings {
   #[cfg(target_os = "linux")]
   (builder = try_add_file_source(builder, PathBuf::from("/etc/settlers/settlers.toml"), true));
 
-  match config_dir() {
-    Some(directory) => {
-      let path = directory.join("settlers/settlers.toml");
-      builder = try_add_file_source(builder, path, true);
-    },
-    None => {}
+  if let Some(directory) = config_dir() {
+    let path = directory.join("settlers/settlers.toml");
+    builder = try_add_file_source(builder, path, true);
   }
 
-  match search_config_current_recurse(&*CURRENT_PATH) {
+  match search_config_current_recurse(&CURRENT_PATH) {
     Some(path) => builder = try_add_file_source(builder, path, false),
     None => debug!("Config file not found in current directory tree")
   }

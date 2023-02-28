@@ -65,16 +65,12 @@ async fn handle_connection(
   }
 
   let uri = req.uri().clone();
-
-  let path = match uri.path().get(1..) {
-    Some(path) => path,
-    None => ""
-  };
+  let path = uri.path().get(1..).unwrap_or("");
 
   let (section, subpath) = {
-    match path.split_once("/") {
+    match path.split_once('/') {
       Some(parts) => parts,
-      None => if path == "" { ("public", "index.html") } else { (path, "") }
+      None => if path.is_empty() { ("public", "index.html") } else { (path, "") }
     }
   };
 
@@ -226,6 +222,9 @@ async fn run(listener: TcpListener, service: Service, _: (), mut stop_receiver: 
 }
 
 pub async fn start(communicator: Arc<Mutex<Communicator>>, stop_receiver: Receiver<()>) {
+  // For "secure_server" feature create_additional_acceptor return used later value,
+  // it used for same `run` function signatures for "secure_server" and if it disabled
+  #[allow(clippy::let_unit_value)]
   let additional_acceptor = create_additional_acceptor();
   let listener = create_tcp_listener(SETTINGS.bind_addr).await;
 

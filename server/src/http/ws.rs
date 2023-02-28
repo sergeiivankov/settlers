@@ -51,15 +51,11 @@ async fn handle_connection(
       from = read.next() => {
         match from {
           Some(result) => match result {
-            Ok(message) => match message {
-              Message::Text(data) => match sender.send((id, data)) {
-                Ok(_) => {},
-                Err(err) => {
-                  error!("Send from peer {} error: {}", id, err);
-                  break
-                }
-              },
-              _ => {}
+            Ok(message) => if let Message::Text(data) = message {
+              if let Err(err) = sender.send((id, data)) {
+                error!("Send from peer {} error: {}", id, err);
+                break
+              }
             },
             Err(err) => {
               debug!("Receive WS message {} error: {}", id, err);
@@ -119,15 +115,15 @@ pub async fn ws(
 
   if req.method() != Method::GET
   || version != Version::HTTP_11
-  || path != ""
+  || path.is_empty()
   || key_option.is_none()
-  || get_header_str(CONNECTION, &headers)
+  || !get_header_str(CONNECTION, headers)
        .map(|s| s.split(&[' ', ',']).any(|p| p.eq_ignore_ascii_case("upgrade")))
-       .unwrap_or(false) == false
-  || get_header_str(UPGRADE, &headers)
+       .unwrap_or(false)
+  || !get_header_str(UPGRADE, headers)
        .map(|s| s.eq_ignore_ascii_case("websocket"))
-       .unwrap_or(false) == false
-  || headers.get(SEC_WEBSOCKET_VERSION).map(|v| v == "13").unwrap_or(false) == false
+       .unwrap_or(false)
+  || !headers.get(SEC_WEBSOCKET_VERSION).map(|v| v == "13").unwrap_or(false)
   {
     debug!("Check creating WS connection error: {:?}", req);
     return status_response(StatusCode::BAD_REQUEST)

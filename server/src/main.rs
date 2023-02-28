@@ -1,3 +1,9 @@
+#![deny(clippy::all)]
+//#![deny(clippy::pedantic)]
+//#![deny(clippy::restriction)]
+//#![deny(clippy::nursery)]
+//#![deny(clippy::cargo)]
+
 #[cfg(not(any(
   feature = "db_mysql",
   feature = "db_postgres",
@@ -39,7 +45,7 @@ fn main() {
 
   // For logging initialization "log" config value usage
   let mut env_logger_builder = EnvLoggerBuilder::new();
-  env_logger_builder.parse_filters(&SETTINGS.log.as_ref().unwrap());
+  env_logger_builder.parse_filters(SETTINGS.log.as_ref().unwrap());
 
   // Disable rustls crate logging by default (in particular, self-signed certificate client error)
   // TODO: if https://github.com/launchbadge/sqlx/pull/2371 will be accepted,
@@ -68,7 +74,7 @@ fn main() {
 
     let db = match Database::connect(db_connect_options).await {
       Ok(connection) => connection,
-      Err(err) => exit_with_error(format!("Database connect error: {}", err))
+      Err(err) => exit_with_error(format!("Database connect error: {err}"))
     };
 
     match Migrator::up(&db, None).await {

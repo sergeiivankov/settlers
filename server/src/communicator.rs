@@ -37,7 +37,7 @@ impl Communicator {
   }
 
   pub fn remove(&mut self, id: &u32) {
-    self.peers.remove(&id);
+    self.peers.remove(id);
   }
 
   pub fn send(&self, id: &u32, data: String) -> bool {

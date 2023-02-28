@@ -42,11 +42,9 @@ pub async fn api(path: &str, req: Request<Incoming>, body_size: u64) -> HttpResp
 
   // Check API request maximum body size before read it
   // TODO: if upload profile picture method name changed, change it too
-  if path != "upload_picture" {
-    if body_size > MAX_API_BODY_SIZE {
-      debug!("API body too large: {} > {}", body_size, MAX_API_BODY_SIZE);
-      return status_response(StatusCode::PAYLOAD_TOO_LARGE)
-    }
+  if path != "upload_picture" && body_size > MAX_API_BODY_SIZE {
+    debug!("API body too large: {} > {}", body_size, MAX_API_BODY_SIZE);
+    return status_response(StatusCode::PAYLOAD_TOO_LARGE)
   }
 
   let collected = match req.collect().await {
