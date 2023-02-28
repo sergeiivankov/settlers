@@ -1,7 +1,5 @@
 use http_body_util::Full;
-use hyper::{
-  body::Incoming, header::{ CONTENT_TYPE, HeaderValue }, Response, Request, StatusCode
-};
+use hyper::{ body::Incoming, header::{ CONTENT_TYPE, HeaderValue }, Response, Request, StatusCode };
 use log::debug;
 use std::{ io::{ Error, ErrorKind }, path::{ Component, Path, PathBuf } };
 use crate::settings::SETTINGS;
@@ -21,8 +19,6 @@ use hyper::header::{ ETAG, IF_NONE_MATCH };
 #[cfg(feature = "public_resources_caching")]
 use lazy_static::lazy_static;
 #[cfg(feature = "public_resources_caching")]
-use log::error;
-#[cfg(feature = "public_resources_caching")]
 use sha1::{ Sha1, Digest };
 #[cfg(feature = "public_resources_caching")]
 use std::{ collections::HashMap, fs::read };
@@ -34,23 +30,28 @@ use walkdir::WalkDir;
 use crate::helpers::exit_with_error;
 
 #[cfg(feature = "public_resources_caching")]
+pub struct ResourceCache {
+  mime_type: HeaderValue,
+  etag: HeaderValue,
+  body: Full<Bytes>
+}
+
+#[cfg(feature = "public_resources_caching")]
 lazy_static! {
   // Read all public resources files to cache on server start
-  // Values in HashMap is tuple with content hash ETAG HeaderValue and ready to return response body
-  pub static ref PUBLIC_RESOURCES_CACHE: Mutex<HashMap<String, (HeaderValue, Full<Bytes>)>> = {
+  // Values in HashMap is strust with mime type HeaderValue, content hash ETAG HeaderValue
+  // and ready to return response body
+  pub static ref PUBLIC_RESOURCES_CACHE: Mutex<HashMap<String, ResourceCache>> = {
     let mut paths = Vec::new();
 
     for entry_result in WalkDir::new(&SETTINGS.public_resources_path) {
-      match entry_result {
-        Ok(entry) => {
-          let path = entry.path().to_owned();
-          if path.is_dir() {
-            continue
-          }
+      let entry = entry_result.unwrap_or_else(|err| {
+        exit_with_error(format!("Walk entry error: {}", err))
+      });
 
-          paths.push(path);
-        },
-        Err(err) => error!("Walk entry error: {}", err)
+      let path = entry.path().to_owned();
+      if path.is_file() {
+        paths.push(path);
       }
     }
 
@@ -58,62 +59,69 @@ lazy_static! {
     let mut hasher = Sha1::new();
 
     for path in &paths {
-      let path_str = match path.to_str() {
-        Some(path_str) => path_str,
-        None => {
-          error!("Convert path \"{}\" to str error", path.display());
-          continue
-        }
-      };
+      let path_str = path.to_str().unwrap_or_else(|| {
+        exit_with_error(format!("Convert path \"{}\" to str error", path.display()))
+      });
 
-      let content = match read(path) {
-        Ok(content) => content,
-        Err(err) => {
-          error!("Read file error: {}", err);
-          continue
-        }
-      };
+      let content = read(path).unwrap_or_else(|err| {
+        exit_with_error(format!("Read file error: {}", err))
+      });
 
       hasher.update(&content);
       let hash = hasher.finalize_reset();
 
-      let encoded_hash = encode(hash);
-      let etag = HeaderValue::from_str(&format!("\"{}\"", encoded_hash)).unwrap_or_else(|_| {
-        exit_with_error(format!("Create \"Etag\" header value error: {}", encoded_hash))
+      let etag = format!("\"{}\"", encode(hash));
+      let etag_value = HeaderValue::from_str(&etag).unwrap_or_else(|_| {
+        exit_with_error(
+          format!("Create \"Etag\" header value for \"{}\" error: {}", path_str, etag)
+        )
       });
 
-      cache.insert(
-        // Cut off path to public resources directory from full public resource path
-        String::from(&path_str[(SETTINGS.public_resources_path.len() + 1)..]),
-        (etag, Full::new(content.into()))
-      );
+      // Cut off path to public resources directory part from full public resource path
+      let key = String::from(&path_str[(SETTINGS.public_resources_path.len() + 1)..]);
+
+      cache.insert(key, ResourceCache {
+        mime_type: get_mime_type(path_str),
+        etag: etag_value,
+        body: Full::new(content.into())
+      });
     }
 
     Mutex::new(cache)
   };
 }
 
+fn get_mime_type(path: &str) -> HeaderValue {
+  let ext = match path.rsplit_once('.') {
+    Some(parts) => parts.1,
+    None => ""
+  };
+
+  match MIME_TYPES.get(ext) {
+    Some(mime_type) => mime_type.clone(),
+    None => header_value(PreBuiltHeader::ApplicationOctetStream)
+  }
+}
+
 #[cfg(feature = "public_resources_caching")]
-async fn get_response_data(
-path: String, mime_type: HeaderValue, req: Request<Incoming>
-) -> Result<HttpResponse, Error> {
+async fn get_response_data(path: String, req: Request<Incoming>) -> Result<HttpResponse, Error> {
   let cache = PUBLIC_RESOURCES_CACHE.lock().await;
 
   match cache.get(&path) {
-    Some((hash, body)) => {
+    Some(resource_cache) => {
       if let Some(client_hash) = req.headers().get(IF_NONE_MATCH) {
-        if client_hash == hash {
+        if client_hash == resource_cache.etag {
           let mut response = Response::new(Full::new(Bytes::new()));
           *response.status_mut() = StatusCode::NOT_MODIFIED;
           return Ok(response)
         }
       }
 
-      let mut response = Response::new(body.clone());
+      let mut response = Response::new(resource_cache.body.clone());
 
       let headers = response.headers_mut();
-      headers.insert(CONTENT_TYPE, mime_type);
-      headers.insert(ETAG, hash.clone());
+      headers.insert(CONTENT_TYPE, resource_cache.mime_type.clone());
+      headers.insert(ETAG, resource_cache.etag.clone());
 
       Ok(response)
     },
@@ -122,15 +130,13 @@ path: String, mime_type: HeaderValue, req: Request<Incoming>
 }
 
 #[cfg(not(feature = "public_resources_caching"))]
-async fn get_response_data(
-  path: String, mime_type: HeaderValue, _: Request<Incoming>
-) -> Result<HttpResponse, Error> {
+async fn get_response_data(path: String, _: Request<Incoming>) -> Result<HttpResponse, Error> {
   let full_path = format!("{}{}{}", SETTINGS.public_resources_path, MAIN_SEPARATOR, path);
 
   match read(full_path).await {
     Ok(content) => {
       let mut response = Response::new(Full::new(content.into()));
-      response.headers_mut().insert(CONTENT_TYPE, mime_type);
+      response.headers_mut().insert(CONTENT_TYPE, get_mime_type(&path));
 
       Ok(response)
     },
@@ -164,19 +170,7 @@ pub async fn serve(path: &str, req: Request<Incoming>) -> HttpResponse {
     String::from(path_str)
   };
 
-  let mime_type = {
-    let ext = match path.rsplit_once('.') {
-      Some(parts) => parts.1,
-      None => ""
-    };
-
-    match MIME_TYPES.get(ext) {
-      Some(mime_type) => mime_type.clone(),
-      None => header_value(PreBuiltHeader::ApplicationOctetStream)
-    }
-  };
-
-  match get_response_data(path, mime_type, req).await {
+  match get_response_data(path, req).await {
     Ok(response) => response,
     Err(err) => {
       debug!("Read file error: {}", err);
