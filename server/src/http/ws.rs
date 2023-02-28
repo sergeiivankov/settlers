@@ -67,14 +67,9 @@ async fn handle_connection(
       },
       to = receiver.recv() => {
         match to {
-          Some(data) => {
-            match write.send(Message::Text(data)).await {
-              Ok(_) => {},
-              Err(err) => {
-                debug!("Send WS message {} error: {}", id, err);
-                break
-              }
-            }
+          Some(data) => if let Err(err) = write.send(Message::Text(data)).await {
+            debug!("Send WS message {} error: {}", id, err);
+            break
           },
           None => {
             error!("Sender to peer closed before it remove from communicator {}", id);
@@ -97,9 +92,8 @@ async fn handle_connection(
     }
   };
 
-  match stream.close(None).await {
-    Ok(_) => {},
-    Err(err) => match err {
+  if let Err(err) = stream.close(None).await {
+    match err {
       Error::ConnectionClosed => {},
       _ => error!("Close WS stream {} error: {}", id, err)
     }

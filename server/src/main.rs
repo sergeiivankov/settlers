@@ -81,10 +81,9 @@ fn main() {
       Err(err) => exit_with_error(format!("Database connect error: {err}"))
     };
 
-    match Migrator::up(&db, None).await {
-      Ok(_) => {},
-      Err(err) => exit_with_error(format!("Database migration error: {}", err))
-    };
+    if let Err(err) = Migrator::up(&db, None).await {
+      exit_with_error(format!("Database migration error: {}", err))
+    }
 
     let (intermedium_stop_sender, intermedium_stop_receiver) = channel::<()>();
     let (http_stop_sender, http_stop_receiver) = channel::<()>();
@@ -99,39 +98,33 @@ fn main() {
     let http_handle = spawn(start(communicator, http_stop_receiver));
 
     let stop_handle = spawn(async move {
-      match ctrl_c().await {
-        Ok(_) => {},
-        Err(err) => exit_with_error(format!("Receive Ctrl-C signal error: {}", err))
-      };
+      if let Err(err) = ctrl_c().await {
+        exit_with_error(format!("Receive Ctrl-C signal error: {}", err))
+      }
 
       debug!("Received Ctrl-C signal");
 
-      match intermedium_stop_sender.send(()) {
-        Ok(_) => {},
-        Err(_) => exit_with_error(String::from("Send intermedium stop signal error"))
-      };
+      if intermedium_stop_sender.send(()).is_err() {
+        exit_with_error(String::from("Send intermedium stop signal error"))
+      }
 
-      match http_stop_sender.send(()) {
-        Ok(_) => {},
-        Err(_) => exit_with_error(String::from("Send http stop signal error"))
-      };
+      if http_stop_sender.send(()).is_err() {
+        exit_with_error(String::from("Send http stop signal error"))
+      }
     });
 
     let (intermedium_join_result, http_join_result, stop_join_result) = join!(
       intermedium_handle, http_handle, stop_handle
     );
 
-    match intermedium_join_result {
-      Ok(_) => {},
-      Err(err) => error!("Join intermedium task error: {}", err)
+    if let Err(err) = intermedium_join_result {
+      error!("Join intermedium task error: {}", err);
     }
-    match http_join_result {
-      Ok(_) => {},
-      Err(err) => error!("Join http task error: {}", err)
+    if let Err(err) = http_join_result {
+      error!("Join http task error: {}", err);
     }
-    match stop_join_result {
-      Ok(_) => {},
-      Err(err) => error!("Join stop task error: {}", err)
+    if let Err(err) = stop_join_result {
+      error!("Join stop task error: {}", err);
     }
   });
 }
