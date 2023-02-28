@@ -1,6 +1,4 @@
-mod m0001_create_users_table;
-mod m0002_create_auths_methods_table;
-mod m0003_create_auths_sessions_table;
+mod m0001_initial_structure;
 
 use sea_orm::{ schema::Schema, EntityTrait };
 use sea_orm_migration::{
@@ -15,11 +13,7 @@ pub struct Migrator;
 #[async_trait]
 impl MigratorTrait for Migrator {
   fn migrations() -> Vec<Box<dyn MigrationTrait>> {
-    vec![
-      Box::new(m0001_create_users_table::Migration),
-      Box::new(m0002_create_auths_methods_table::Migration),
-      Box::new(m0003_create_auths_sessions_table::Migration)
-    ]
+    vec![Box::new(m0001_initial_structure::Migration)]
   }
 }
 
@@ -40,7 +34,7 @@ where
 
 // TODO: for first stable release remove and rewrite migrations to manual creation using statements
 //       to later creation modifying base tables migrations and changing entities
-async fn up_from_entity<E>(manager: &SchemaManager<'_>, entity: E) -> MigrationResult
+async fn structure_from_entity<E>(manager: &SchemaManager<'_>, entity: E) -> MigrationResult
 where
   E: EntityTrait
 {
