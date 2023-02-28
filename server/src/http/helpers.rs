@@ -26,12 +26,12 @@ pub const MAX_API_BODY_SIZE: u64 = 1024;
 const MAX_WEB_SOCKET_MESSAGE_SIZE: usize = 1024;
 
 lazy_static! {
-  pub static ref HEADER_VALUES: HashMap<PreBuiltHeader, HeaderValue> = {
+  pub static ref HEADER_VALUES: HashMap<u8, HeaderValue> = {
     let header_keys = PreBuiltHeader::iter();
     let mut header_values = HashMap::with_capacity(header_keys.len());
 
     for key in header_keys {
-      header_values.insert(key, build_header_value(key.as_ref()));
+      header_values.insert(key as u8, build_header_value(key.as_ref()));
     }
 
     header_values
@@ -63,7 +63,7 @@ fn build_header_value(value: &str) -> HeaderValue {
     .unwrap_or_else(|_| exit_with_error(format!("Create header value error: \"{}\"", value)))
 }
 
-#[derive(Copy, Clone, Eq, PartialEq, Hash, AsRefStr, EnumIter)]
+#[derive(Copy, Clone, AsRefStr, EnumIter)]
 #[repr(u8)]
 pub enum PreBuiltHeader {
   #[strum(serialize = "application/octet-stream")]
@@ -81,7 +81,7 @@ pub enum PreBuiltHeader {
 }
 
 pub fn header_value(key: PreBuiltHeader) -> HeaderValue {
-  let value_option = HEADER_VALUES.get(&key);
+  let value_option = HEADER_VALUES.get(&(key as u8));
   // SAFETY: to build HEADER_VALUES used iterator over PreBuiltHeader variants,
   //         so HashMap contain them all as keys
   let value = unsafe { value_option.unwrap_unchecked() };
