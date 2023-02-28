@@ -10,7 +10,7 @@ mod db;
 mod helpers;
 mod http;
 mod intermedium;
-mod protos;
+mod protos { include!(concat!(env!("OUT_DIR"), "/protos/mod.rs")); }
 mod settings;
 
 use dotenv::dotenv;

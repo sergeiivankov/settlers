@@ -172,7 +172,7 @@ pub async fn serve(path: &str, req: Request<Incoming>) -> HttpResponse {
 
     match MIME_TYPES.get(ext) {
       Some(mime_type) => mime_type.clone(),
-      None => header_value(PreBuiltHeader::AppOctetStream)
+      None => header_value(PreBuiltHeader::ApplicationOctetStream)
     }
   };
 

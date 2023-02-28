@@ -1,7 +1,9 @@
-use bytes::Bytes;
+use bytes::{ BufMut, Bytes, BytesMut };
 use http_body_util::Full;
-use hyper::{ header::HeaderValue, Response, StatusCode };
+use hyper::{ header::{ CONTENT_TYPE, HeaderValue }, Response, StatusCode };
 use lazy_static::lazy_static;
+use log::debug;
+use quick_protobuf::{ BytesReader, MessageRead, MessageWrite, Writer };
 use std::collections::HashMap;
 use strum::{ AsRefStr, EnumIter, IntoEnumIterator };
 use tokio_tungstenite::tungstenite::protocol::WebSocketConfig;
@@ -65,9 +67,11 @@ fn build_header_value(value: &str) -> HeaderValue {
 #[repr(u8)]
 pub enum PreBuiltHeader {
   #[strum(serialize = "application/octet-stream")]
-  AppOctetStream,
+  ApplicationOctetStream,
   #[strum(serialize = "no-store, must-revalidate")]
   DisableCache,
+  #[strum(serialize = "text/plain")]
+  TextPlain,
   #[strum(serialize = "Upgrade")]
   Upgrade,
   #[strum(serialize = "websocket")]
@@ -91,6 +95,29 @@ pub fn status_response(code: StatusCode) -> HttpResponse {
 
   let mut response = Response::new(reason_phrase.into());
   *response.status_mut() = code;
+  response.headers_mut().insert(CONTENT_TYPE, header_value(PreBuiltHeader::TextPlain));
+
+  response
+}
+
+pub fn deserialize_api_params<'a, R: MessageRead<'a>>(body: &'a Bytes) -> Result<R, HttpResponse> {
+  let mut reader = BytesReader::from_bytes(body);
+  R::from_reader(&mut reader, body).map_err(|err| {
+    debug!("Read API params error: {}", err);
+    status_response(StatusCode::BAD_REQUEST)
+  })
+}
+
+pub fn serialize_api_response<W: MessageWrite>(result: W) -> HttpResponse {
+  let mut writer = BytesMut::zeroed(result.get_size()).writer();
+
+  let write_result = result.write_message(&mut Writer::new(&mut writer));
+  // SAFETY: WriterBackend implements may return only UnexpectedEndOfBuffer Err variant,
+  //         which mean that writer is not long enough, but we create buffer with correct length
+  unsafe { write_result.unwrap_unchecked(); };
+
+  let mut response = Response::new(Full::new(writer.into_inner().freeze()));
+  response.headers_mut().insert(CONTENT_TYPE, header_value(PreBuiltHeader::ApplicationOctetStream));
 
   response
 }

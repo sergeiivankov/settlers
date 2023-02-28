@@ -5,10 +5,12 @@ use lazy_static::lazy_static;
 use log::debug;
 use std::collections::HashMap;
 use crate::protos::{
-  auth::{ CheckTokenParams, CheckTokenResult, CheckTokenTestParams, CheckTokenTestResult },
+  auth::{ CheckTokenParams, CheckTokenResult, CheckTokenTestParams, CheckTokenTestResult }
+};
+use super::helpers::{
+  MAX_API_BODY_SIZE, HttpResponse, status_response,
   deserialize_api_params as deserialize, serialize_api_response as serialize
 };
-use super::helpers::{ MAX_API_BODY_SIZE, HttpResponse, status_response };
 
 type HandlerWrapper = dyn Fn(&Bytes) -> Result<HttpResponse, HttpResponse> + Sync;
 type RouteHandlers = HashMap<&'static str, Box<HandlerWrapper>>;
