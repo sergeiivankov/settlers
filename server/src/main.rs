@@ -2,7 +2,11 @@
 //#![deny(clippy::pedantic)]
 //#![deny(clippy::restriction)]
 //#![deny(clippy::nursery)]
-//#![deny(clippy::cargo)]
+#![deny(clippy::cargo)]
+
+#![allow(clippy::cargo_common_metadata)]
+
+// TODO: design project repository
 
 #[cfg(not(any(
   feature = "db_mysql",
