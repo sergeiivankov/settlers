@@ -1,12 +1,14 @@
 use http_body_util::Full;
 use hyper::{ body::Incoming, header::{ CONTENT_TYPE, HeaderValue }, Response, Request, StatusCode };
 use log::debug;
-use std::{ io::{ Error, ErrorKind }, path::{ Component, Path, PathBuf } };
+use std::path::{ Component, Path, PathBuf };
 use crate::settings::SETTINGS;
 use super::helpers::{ MIME_TYPES, HttpResponse, PreBuiltHeader, header_value, status_response };
 
 #[cfg(not(feature = "public_resources_caching"))]
-use std::path::MAIN_SEPARATOR;
+use log::{ Level, log };
+#[cfg(not(feature = "public_resources_caching"))]
+use std::{ io::ErrorKind, path::MAIN_SEPARATOR };
 #[cfg(not(feature = "public_resources_caching"))]
 use tokio::fs::read;
 
@@ -63,8 +65,8 @@ lazy_static! {
         exit_with_error(format!("Convert path \"{}\" to str error", path.display()))
       });
 
-      let content = read(path).unwrap_or_else(|err| {
-        exit_with_error(format!("Read file error: {}", err))
+      let content = read(&path).unwrap_or_else(|err| {
+        exit_with_error(format!("Read file \"{}\" error: {}", path.display(), err))
       });
 
       hasher.update(&content);
@@ -104,7 +106,7 @@ fn get_mime_type(path: &str) -> HeaderValue {
 }
 
 #[cfg(feature = "public_resources_caching")]
-async fn get_response_data(path: String, req: Request<Incoming>) -> Result<HttpResponse, Error> {
+async fn get_response_data(path: String, req: Request<Incoming>) -> HttpResponse {
   let cache = PUBLIC_RESOURCES_CACHE.lock().await;
 
   match cache.get(&path) {
@@ -113,7 +115,7 @@ async fn get_response_data(path: String, req: Request<Incoming>) -> Result<HttpR
         if client_hash == resource_cache.etag {
           let mut response = Response::new(Full::new(Bytes::new()));
           *response.status_mut() = StatusCode::NOT_MODIFIED;
-          return Ok(response)
+          return response
         }
       }
 
@@ -123,24 +125,32 @@ async fn get_response_data(path: String, req: Request<Incoming>) -> Result<HttpR
       headers.insert(CONTENT_TYPE, resource_cache.mime_type.clone());
       headers.insert(ETAG, resource_cache.etag.clone());
 
-      Ok(response)
+      response
     },
-    None => Err(Error::new(ErrorKind::NotFound, ""))
+    None => status_response(StatusCode::NOT_FOUND)
   }
 }
 
 #[cfg(not(feature = "public_resources_caching"))]
-async fn get_response_data(path: String, _: Request<Incoming>) -> Result<HttpResponse, Error> {
+async fn get_response_data(path: String, _: Request<Incoming>) -> HttpResponse {
   let full_path = format!("{}{}{}", SETTINGS.public_resources_path, MAIN_SEPARATOR, path);
 
-  match read(full_path).await {
+  match read(&full_path).await {
     Ok(content) => {
       let mut response = Response::new(Full::new(content.into()));
       response.headers_mut().insert(CONTENT_TYPE, get_mime_type(&path));
 
-      Ok(response)
+      response
     },
-    Err(err) => Err(err)
+    Err(err) => {
+      let log_level = match err.kind() {
+        ErrorKind::NotFound => Level::Debug,
+        _ => Level::Warn
+      };
+      log!(log_level, "Read file \"{}\" error: {}", full_path, err);
+
+      status_response(StatusCode::NOT_FOUND)
+    }
   }
 }
 
@@ -170,15 +180,5 @@ pub async fn serve(path: &str, req: Request<Incoming>) -> HttpResponse {
     String::from(path_str)
   };
 
-  match get_response_data(path, req).await {
-    Ok(response) => response,
-    Err(err) => {
-      debug!("Read file error: {}", err);
-
-      status_response(match err.kind() {
-        ErrorKind::NotFound | ErrorKind::PermissionDenied => StatusCode::NOT_FOUND,
-        _ => StatusCode::INTERNAL_SERVER_ERROR
-      })
-    }
-  }
+  get_response_data(path, req).await
 }
