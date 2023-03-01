@@ -46,7 +46,7 @@ use tokio::{
   runtime::Builder as RuntimeBuilder, signal::ctrl_c, sync::oneshot::channel, join, spawn
 };
 use crate::{
-  communicator::Communicator, db::Migrator, helpers::{ CURRENT_PATH, exit_with_error },
+  communicator::Communicator, db::Migrator, helpers::exit_with_error,
   http::start, intermedium::Intermedium, settings::SETTINGS
 };
 
@@ -55,8 +55,7 @@ fn main() {
   // It may contain RUST_LOG or SETTLERS_* variables
   dotenv().ok();
 
-  // Need to check for errors lazy static refs before server start
-  initialize(&CURRENT_PATH);
+  // Need to check for lazy static settings initialize errors before server start
   initialize(&SETTINGS);
 
   // For logging initialization "log" config value usage

@@ -1,10 +1,16 @@
 use config::{ builder::DefaultState, Config, ConfigBuilder, Environment, File };
 use dirs::config_dir;
+use lazy_static::{ lazy_static, initialize };
 use log::{ debug, info };
 use serde_path_to_error::deserialize;
-use std::{ fs::metadata, io::{ Error, ErrorKind }, path::{ Path, PathBuf } };
-use crate::helpers::{ CURRENT_PATH, exit_with_error };
+use std::{ env::current_dir, fs::metadata, io::{ Error, ErrorKind }, path::{ Path, PathBuf } };
+use crate::helpers::exit_with_error;
 use super::structs::Settings;
+
+lazy_static! {
+  static ref CURRENT_PATH: PathBuf = current_dir()
+    .unwrap_or_else(|err| exit_with_error(format!("Get current path error: {err}")));
+}
 
 fn check_config_path(path: PathBuf) -> Option<PathBuf> {
   let err = match metadata(&path) {
@@ -103,6 +109,9 @@ fn check(settings: &mut Settings) {
 }
 
 pub fn init() -> Settings {
+  // Need to check for lazy static current path initialize errors before start settings parsing
+  initialize(&CURRENT_PATH);
+
   let mut builder = Config::builder();
 
   #[cfg(target_os = "linux")]
