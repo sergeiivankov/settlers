@@ -142,7 +142,9 @@ pub fn init() -> Settings {
   });
 
   let mut settings: Settings = deserialize(config).unwrap_or_else(|err| {
-    exit_with_error(&format!("Config key \"{}\" error: {}", err.path(), err.inner()))
+    let path = err.path().to_string();
+    let key_part = if path == "." { String::new() } else { format!(" key \"{path}\"") };
+    exit_with_error(&format!("Config{key_part} error: {}", err.inner()))
   });
 
   default(&mut settings);
