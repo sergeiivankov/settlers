@@ -43,12 +43,11 @@ impl Communicator {
   pub fn send(&self, id: u32, data: String) -> bool {
     let Some(sender) = self.peers.get(&id) else { return false };
 
-    match sender.send(data) {
-      Ok(_) => true,
-      Err(err) => {
-        debug!("Send data to peer {id} error: {err}");
-        false
-      }
+    if let Err(err) = sender.send(data) {
+      debug!("Send data to peer {id} error: {err}");
+      false
+    } else {
+      true
     }
   }
 

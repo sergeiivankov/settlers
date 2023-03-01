@@ -48,7 +48,7 @@ lazy_static! {
 
     for entry_result in WalkDir::new(&SETTINGS.public_resources_path) {
       let entry = entry_result.unwrap_or_else(|err| {
-        exit_with_error(format!("Walk entry error: {}", err))
+        exit_with_error(&format!("Walk entry error: {err}"))
       });
 
       let path = entry.path().to_owned();
@@ -62,11 +62,11 @@ lazy_static! {
 
     for path in &paths {
       let path_str = path.to_str().unwrap_or_else(|| {
-        exit_with_error(format!("Convert path \"{}\" to str error", path.display()))
+        exit_with_error(&format!("Convert path \"{}\" to str error", path.display()))
       });
 
-      let content = read(&path).unwrap_or_else(|err| {
-        exit_with_error(format!("Read file \"{}\" error: {}", path.display(), err))
+      let content = read(path).unwrap_or_else(|err| {
+        exit_with_error(&format!("Read file \"{}\" error: {err}", path.display()))
       });
 
       hasher.update(&content);
@@ -74,9 +74,7 @@ lazy_static! {
 
       let etag = format!("\"{}\"", encode(hash));
       let etag_value = HeaderValue::from_str(&etag).unwrap_or_else(|_| {
-        exit_with_error(
-          format!("Create \"Etag\" header value for \"{}\" error: {}", path_str, etag)
-        )
+        exit_with_error(&format!("Create \"Etag\" header value for \"{path_str}\" error: {etag}"))
       });
 
       // Cut off path to public resources directory part from full public resource path
@@ -106,31 +104,30 @@ fn get_mime_type(path: &str) -> HeaderValue {
 async fn get_response_data(path: String, req: Request<Incoming>) -> HttpResponse {
   let cache = PUBLIC_RESOURCES_CACHE.lock().await;
 
-  match cache.get(&path) {
-    Some(resource_cache) => {
-      if let Some(client_hash) = req.headers().get(IF_NONE_MATCH) {
-        if client_hash == resource_cache.etag {
-          let mut response = Response::new(Full::new(Bytes::new()));
-          *response.status_mut() = StatusCode::NOT_MODIFIED;
-          return response
-        }
+  if let Some(resource_cache) = cache.get(&path) {
+    if let Some(client_hash) = req.headers().get(IF_NONE_MATCH) {
+      if client_hash == resource_cache.etag {
+        let mut response = Response::new(Full::new(Bytes::new()));
+        *response.status_mut() = StatusCode::NOT_MODIFIED;
+        return response
       }
+    }
 
-      let mut response = Response::new(resource_cache.body.clone());
+    let mut response = Response::new(resource_cache.body.clone());
 
-      let headers = response.headers_mut();
-      headers.insert(CONTENT_TYPE, resource_cache.mime_type.clone());
-      headers.insert(ETAG, resource_cache.etag.clone());
+    let headers = response.headers_mut();
+    headers.insert(CONTENT_TYPE, resource_cache.mime_type.clone());
+    headers.insert(ETAG, resource_cache.etag.clone());
 
-      response
-    },
-    None => status_response(StatusCode::NOT_FOUND)
+    return response
   }
+
+  status_response(StatusCode::NOT_FOUND)
 }
 
 #[cfg(not(feature = "public_resources_caching"))]
 async fn get_response_data(path: String, _: Request<Incoming>) -> HttpResponse {
-  let full_path = format!("{}{}{}", SETTINGS.public_resources_path, MAIN_SEPARATOR, path);
+  let full_path = format!("{}{MAIN_SEPARATOR}{path}", SETTINGS.public_resources_path);
 
   match read(&full_path).await {
     Ok(content) => {
@@ -144,7 +141,7 @@ async fn get_response_data(path: String, _: Request<Incoming>) -> HttpResponse {
         ErrorKind::NotFound => Level::Debug,
         _ => Level::Warn
       };
-      log!(log_level, "Read file \"{}\" error: {}", full_path, err);
+      log!(log_level, "Read file \"{full_path}\" error: {err}");
 
       status_response(StatusCode::NOT_FOUND)
     }
@@ -157,13 +154,12 @@ pub async fn serve(path: &str, req: Request<Incoming>) -> HttpResponse {
 
     // Path analisis for special components exists
     for component in Path::new(path).components() {
-      match component {
-        Component::Prefix(_) | Component::CurDir | Component::RootDir | Component::ParentDir => {
-          debug!("Found special path component {component:?} in \"{path}\"");
-          return status_response(StatusCode::NOT_FOUND)
-        },
-        Component::Normal(c) => normalized_path.push(c)
-      };
+      if let Component::Normal(c) = component {
+        normalized_path.push(c);
+      } else {
+        debug!("Found special path component {component:?} in \"{path}\"");
+        return status_response(StatusCode::NOT_FOUND)
+      }
     }
 
     let Some(path_str) = normalized_path.to_str() else {

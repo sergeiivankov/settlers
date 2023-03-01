@@ -1,12 +1,14 @@
 use pb_rs::{ types::FileDescriptor, ConfigBuilder };
-use std::{ env::var, fs::{ create_dir_all, remove_dir_all }, path::Path };
+use std::{ env::var, fs::{ create_dir_all, remove_dir_all }, path::{ MAIN_SEPARATOR, PathBuf } };
 use walkdir::WalkDir;
 
 fn main() {
   println!("cargo:rerun-if-changed=../protos");
 
-  let out_dir = Path::new(&var("CARGO_MANIFEST_DIR").unwrap()).join("src").join("protos");
-  let in_dir = Path::new(&var("CARGO_MANIFEST_DIR").unwrap()).parent().unwrap().join("protos");
+  let cargo_manifest_dir_path = PathBuf::from(&var("CARGO_MANIFEST_DIR").unwrap());
+
+  let out_dir = cargo_manifest_dir_path.join(format!("src{MAIN_SEPARATOR}protos"));
+  let in_dir = cargo_manifest_dir_path.parent().unwrap().join("protos");
 
   let mut protos = Vec::new();
   for entry_result in WalkDir::new(&in_dir) {

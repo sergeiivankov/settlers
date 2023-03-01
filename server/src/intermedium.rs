@@ -1,7 +1,7 @@
 use log::debug;
 use std::sync::Arc;
 use tokio::{ sync::{ oneshot::Receiver as OneshotReceiver, Mutex }, select };
-use crate::{ communicator::{ Communicator, Data, Receiver }, helpers::exit_with_error };
+use crate::{ communicator::{ Communicator, Data, Receiver } };
 
 pub struct Intermedium {
   communicator: Arc<Mutex<Communicator>>,
@@ -22,8 +22,11 @@ impl Intermedium {
   }
 
   async fn receive(&mut self) -> Data {
-    self.receiver.recv().await
-      .unwrap_or_else(|| exit_with_error(String::from("All peers messages senders are dropped")))
+    let data_option = self.receiver.recv().await;
+    // SAFETY: `recv` method return None variant if all senders have been dropped or closed,
+    //         but sender live in Communicator, one of which references store in Intermedium
+    //         and dropped with it
+    unsafe { data_option.unwrap_unchecked() }
   }
 
   pub async fn run(&mut self, mut stop_receiver: OneshotReceiver<()>) {

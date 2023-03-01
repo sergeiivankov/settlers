@@ -37,6 +37,10 @@ use tokio_rustls::{ rustls::{ Certificate, PrivateKey, ServerConfig }, TlsAccept
 #[cfg(feature = "secure_server")]
 use std::{ fs::File, io::BufReader };
 
+// MAX_HTTP_BODY_SIZE const will not be more than u32::MAX, so truncation is impossible
+#[allow(clippy::cast_possible_truncation)]
+const MAX_HTTP_BODY_USIZE: usize = MAX_HTTP_BODY_SIZE as usize;
+
 #[derive(Clone)]
 struct Service {
   communicator: Arc<Mutex<Communicator>>
@@ -71,10 +75,8 @@ async fn handle_connection(
   let uri = req.uri().clone();
   let path = uri.path().get(1..).unwrap_or("");
 
-  let (section, subpath) = {
-    path.split_once('/')
-      .unwrap_or(if path.is_empty() { ("public", "index.html") } else { (path, "") })
-  };
+  let (section, subpath) = path.split_once('/')
+    .unwrap_or(if path.is_empty() { ("public", "index.html") } else { (path, "") });
 
   match section {
     "public" => serve(subpath, req).await,
@@ -100,24 +102,24 @@ fn load_secure_server_data() -> (Vec<Certificate>, PrivateKey) {
   let keys_path = &SETTINGS.secure_server.key_path;
 
   let certs_file = File::open(certs_path).unwrap_or_else(|err| {
-    exit_with_error(format!("Open certs file \"{}\" error: {}", certs_path, err))
+    exit_with_error(&format!("Open certs file \"{certs_path}\" error: {err}"))
   });
   let keys_file = File::open(keys_path).unwrap_or_else(|err| {
-    exit_with_error(format!("Open keys file \"{}\" error: {}", keys_path, err))
+    exit_with_error(&format!("Open keys file \"{keys_path}\" error: {err}"))
   });
 
-  let mut certs_raw = certs(&mut BufReader::new(certs_file)).unwrap_or_else(|err| {
-    exit_with_error(format!("Extract certs from \"{}\" error: {}", certs_path, err))
+  let certs_raw = certs(&mut BufReader::new(certs_file)).unwrap_or_else(|err| {
+    exit_with_error(&format!("Extract certs from \"{certs_path}\" error: {err}"))
   });
-  let mut keys_raw = rsa_private_keys(&mut BufReader::new(keys_file)).unwrap_or_else(|err| {
-    exit_with_error(format!("Extract keys from \"{}\" error: {}", keys_path, err))
+  let keys_raw = rsa_private_keys(&mut BufReader::new(keys_file)).unwrap_or_else(|err| {
+    exit_with_error(&format!("Extract keys from \"{keys_path}\" error: {err}"))
   });
 
-  let certs = certs_raw.drain(..).map(Certificate).collect::<Vec<Certificate>>();
-  let keys = keys_raw.drain(..).map(PrivateKey).collect::<Vec<PrivateKey>>();
+  let certs = certs_raw.into_iter().map(Certificate).collect::<Vec<Certificate>>();
+  let keys = keys_raw.into_iter().map(PrivateKey).collect::<Vec<PrivateKey>>();
 
   let key = keys.get(0).unwrap_or_else(|| {
-    exit_with_error(format!("Keys file does not contain any key"))
+    exit_with_error("Keys file does not contain any key")
   }).clone();
 
   (certs, key)
@@ -132,7 +134,7 @@ fn create_additional_acceptor() -> Arc<Mutex<TlsAcceptor>> {
     .with_no_client_auth()
     .with_single_cert(certs, key)
     .unwrap_or_else(|err| {
-      exit_with_error(format!("Create TLS server config error: {}", err))
+      exit_with_error(&format!("Create TLS server config error: {err}"))
     });
 
   Arc::new(Mutex::new(TlsAcceptor::from(Arc::new(server_config))))
@@ -143,7 +145,7 @@ const fn create_additional_acceptor() {}
 
 async fn create_tcp_listener(addr: SocketAddr) -> TcpListener {
   let listener = TcpListener::bind(addr).await.unwrap_or_else(|err| {
-    exit_with_error(format!("Create address listener error: {err}"))
+    exit_with_error(&format!("Create address listener error: {err}"))
   });
 
   info!("Listening on http://{addr}");
@@ -152,27 +154,25 @@ async fn create_tcp_listener(addr: SocketAddr) -> TcpListener {
 }
 
 async fn accept_connection(listener: &TcpListener) -> Option<(TcpStream, SocketAddr)> {
-  match listener.accept().await {
-    Ok(connection) => Some(connection),
-    Err(err) => {
-      debug!("Accept TCP connection error: {err}");
-      None
-    }
+  let accept_result = listener.accept().await;
+
+  if let Err(err) = &accept_result {
+    debug!("Accept TCP connection error: {err}");
   }
+
+  accept_result.ok()
 }
 
 async fn serve_connection<I>(stream: I, service: Service)
 where
   I: AsyncRead + AsyncWrite + Unpin + Send + 'static
 {
-  // MAX_HTTP_BODY_SIZE const will not be more than u32::MAX, so truncation is impossible
-  #[allow(clippy::cast_possible_truncation)]
-  let connection = Builder::new()
-    .max_buf_size(MAX_HTTP_BODY_SIZE as usize)
+  Builder::new()
+    .max_buf_size(MAX_HTTP_BODY_USIZE)
     .serve_connection(stream, service)
-    .with_upgrades();
-
-  connection.await.unwrap_or_else(|err| debug!("Handle connection error: {err}"));
+    .with_upgrades()
+    .await
+    .unwrap_or_else(|err| debug!("Handle connection error: {err}"));
 }
 
 #[cfg(feature = "secure_server")]
@@ -199,7 +199,7 @@ async fn run(
 
           drop(acceptor);
 
-          serve_connection(stream, service_clone).await
+          serve_connection(stream, service_clone).await;
         });
       },
       _ = &mut stop_receiver => {

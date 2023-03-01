@@ -71,7 +71,9 @@ fn main() {
   env_logger_builder.init();
 
   let runtime = RuntimeBuilder::new_multi_thread().enable_io().enable_time().build()
-    .unwrap_or_else(|err| exit_with_error(format!("Create tokio runtime error: {err}")));
+    .unwrap_or_else(|err| {
+      exit_with_error(&format!("Create tokio runtime error: {err}"))
+    });
 
   runtime.block_on(async {
     let db_connect_options = ConnectOptions::new(SETTINGS.database.url.clone())
@@ -87,13 +89,12 @@ fn main() {
       .sqlx_logging(true)
       .clone();
 
-    let db = match Database::connect(db_connect_options).await {
-      Ok(connection) => connection,
-      Err(err) => exit_with_error(format!("Database connect error: {err}"))
-    };
+    let db = Database::connect(db_connect_options).await.unwrap_or_else(|err| {
+      exit_with_error(&format!("Database connect error: {err}"))
+    });
 
     if let Err(err) = Migrator::up(&db, None).await {
-      exit_with_error(format!("Database migration error: {err}"))
+      exit_with_error(&format!("Database migration error: {err}"))
     }
 
     let (intermedium_stop_sender, intermedium_stop_receiver) = channel::<()>();
@@ -110,17 +111,17 @@ fn main() {
 
     let stop_handle = spawn(async move {
       if let Err(err) = ctrl_c().await {
-        exit_with_error(format!("Receive Ctrl-C signal error: {err}"))
+        exit_with_error(&format!("Receive Ctrl-C signal error: {err}"))
       }
 
       debug!("Received Ctrl-C signal");
 
       if intermedium_stop_sender.send(()).is_err() {
-        exit_with_error(String::from("Send intermedium stop signal error"))
+        exit_with_error("Send intermedium stop signal error")
       }
 
       if http_stop_sender.send(()).is_err() {
-        exit_with_error(String::from("Send http stop signal error"))
+        exit_with_error("Send http stop signal error")
       }
     });
 
