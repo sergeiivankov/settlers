@@ -57,6 +57,38 @@ impl HyperService<Request<Incoming>> for Service {
   }
 }
 
+fn build_section_subpath(path: &str) -> (&str, String) {
+  // For root "/" path return index.html
+  if path.is_empty() {
+    return ("public", "index.html".to_string())
+  }
+
+  // Split path to section and subpath
+  let (section, subpath) = path.split_once('/').unwrap_or((path, ""));
+
+  // For "api" and "ws" sections return as is
+  match section {
+    "api" | "ws" => return (section, subpath.to_string()),
+    _ => {}
+  }
+
+  if section == "public" {
+    // No return html files for paths like "/public/foo.html"
+    if subpath.rsplit_once('.').map_or("", |parts| parts.1) == "html" {
+      return ("", String::new())
+    }
+
+    return (section, subpath.to_string())
+  }
+
+  // For paths like "/foo" return "foo.html", except "index.html"
+  if subpath.is_empty() && section != "index" && !section.contains('.') {
+    return ("public", format!("{section}.html"))
+  }
+
+  ("", String::new())
+}
+
 async fn handle_connection(
   req: Request<Incoming>, communicator: Arc<Mutex<Communicator>>
 ) -> HttpResponse {
@@ -75,13 +107,12 @@ async fn handle_connection(
   let uri = req.uri().clone();
   let path = uri.path().get(1..).unwrap_or("");
 
-  let (section, subpath) = path.split_once('/')
-    .unwrap_or(if path.is_empty() { ("public", "index.html") } else { (path, "") });
+  let (section, subpath) = build_section_subpath(path);
 
   match section {
-    "public" => serve(subpath, req).await,
+    "public" => serve(&subpath, req).await,
     "api" => {
-      let mut response = api(subpath, req, body_size).await;
+      let mut response = api(&subpath, req, body_size).await;
       let headers = response.headers_mut();
 
       // Disable caching for API requests for browsers and HTTP 1.0 proxies
@@ -91,7 +122,7 @@ async fn handle_connection(
 
       response
     },
-    "ws" => ws(subpath, req, communicator).await,
+    "ws" => ws(&subpath, req, communicator).await,
     _ => status_response(StatusCode::NOT_FOUND)
   }
 }
