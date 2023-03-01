@@ -2,6 +2,7 @@ client/node_modules
 public/js
 public/style.css
 server/certs
+server/src/protos
 server/target
 server/.env
 server/settlers.sqlite

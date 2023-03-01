@@ -5,7 +5,7 @@ use walkdir::WalkDir;
 fn main() {
   println!("cargo:rerun-if-changed=../protos");
 
-  let out_dir = Path::new(&var("OUT_DIR").unwrap()).join("protos");
+  let out_dir = Path::new(&var("CARGO_MANIFEST_DIR").unwrap()).join("src").join("protos");
   let in_dir = Path::new(&var("CARGO_MANIFEST_DIR").unwrap()).parent().unwrap().join("protos");
 
   let mut protos = Vec::new();
@@ -23,7 +23,8 @@ fn main() {
 
   let config_builder = ConfigBuilder::new(&protos, None, Some(&out_dir), &[in_dir])
     .unwrap()
-    .dont_use_cow(true);
+    .dont_use_cow(true)
+    .headers(false);
 
   FileDescriptor::run(&config_builder.build()).unwrap();
 }

@@ -1,5 +1,6 @@
 #![deny(clippy::all)]
 #![deny(clippy::pedantic)]
+// TODO: write documentation and enable next lints category
 //#![deny(clippy::restriction)]
 #![deny(clippy::nursery)]
 #![deny(clippy::cargo)]
@@ -21,7 +22,17 @@ mod db;
 mod helpers;
 mod http;
 mod intermedium;
-mod protos { include!(concat!(env!("OUT_DIR"), "/protos/mod.rs")); }
+mod protos {
+  // Disable lints for automatically generated files
+  #![allow(unused_imports)]
+  #![allow(clippy::cast_lossless)]
+  #![allow(clippy::deref_addrof)]
+  #![allow(clippy::explicit_auto_deref)]
+  #![allow(clippy::identity_op)]
+  #![allow(clippy::needless_borrow)]
+  #![allow(clippy::wildcard_imports)]
+  include!(concat!(env!("CARGO_MANIFEST_DIR"), "/src/protos/mod.rs"));
+}
 mod settings;
 
 use dotenv::dotenv;
