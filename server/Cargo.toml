@@ -2,7 +2,7 @@
 name = "settlers-server"
 version = "0.1.0"
 edition = "2021"
-description = "Online implementation of the popular board game Catan"
+description = "Server of online implementation of the popular board game Catan"
 authors = ["Sergei Ivankov <sergeiivankov@pm.me>"]
 repository = "https://github.com/sergeiivankov/settlers"
 license = "MIT"
