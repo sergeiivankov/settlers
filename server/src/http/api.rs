@@ -27,10 +27,14 @@ lazy_static! {
   };
 }
 
+// Function for tests, do nothing with params
+#[allow(clippy::needless_pass_by_value)]
 fn check_token(_params: CheckTokenParams) -> HttpResponse {
   serialize(CheckTokenResult { result: true })
 }
 
+// Function for tests, do nothing with params
+#[allow(clippy::needless_pass_by_value)]
 fn check_token_test(_params: CheckTokenTestParams) -> HttpResponse {
   serialize(CheckTokenTestResult { result: true })
 }
@@ -47,9 +51,8 @@ pub async fn api(path: &str, req: Request<Incoming>, body_size: u64) -> HttpResp
     return status_response(StatusCode::PAYLOAD_TOO_LARGE)
   }
 
-  let collected = match req.collect().await {
-    Ok(collected) => collected,
-    Err(_) => return status_response(StatusCode::INTERNAL_SERVER_ERROR)
+  let Ok(collected) = req.collect().await else {
+    return status_response(StatusCode::INTERNAL_SERVER_ERROR)
   };
   let body = collected.to_bytes();
 
@@ -64,7 +67,6 @@ pub async fn api(path: &str, req: Request<Incoming>, body_size: u64) -> HttpResp
   // Err variant contain error API params deserialization
   // Due to use of a shorter syntax `?` in API handlers closure wrappers
   match route_handler(&body) {
-    Ok(response) => response,
-    Err(response) => response
+    Ok(response) | Err(response) => response
   }
 }

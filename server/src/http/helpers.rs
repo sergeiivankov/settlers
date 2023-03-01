@@ -60,7 +60,7 @@ lazy_static! {
 
 fn build_header_value(value: &str) -> HeaderValue {
   HeaderValue::from_str(value)
-    .unwrap_or_else(|_| exit_with_error(format!("Create header value error: \"{}\"", value)))
+    .unwrap_or_else(|_| exit_with_error(format!("Create header value error: \"{value}\"")))
 }
 
 #[derive(Copy, Clone, AsRefStr, EnumIter)]
@@ -108,6 +108,9 @@ pub fn deserialize_api_params<'a, R: MessageRead<'a>>(body: &'a Bytes) -> Result
   })
 }
 
+// API routes handlers call `serialize_api_response` with return statement,
+// so instanted result structure not used later
+#[allow(clippy::needless_pass_by_value)]
 pub fn serialize_api_response<W: MessageWrite>(result: W) -> HttpResponse {
   let mut writer = BytesMut::zeroed(result.get_size()).writer();
 

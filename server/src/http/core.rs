@@ -54,9 +54,8 @@ async fn handle_connection(
   // Main check payload size for all HTTP requests
   // For API requests (except profile picture upload) separate limit
   // For WebSocket messages limit set in stream creation
-  let body_size = match req.body().size_hint().upper() {
-    Some(size) => size,
-    None => return status_response(StatusCode::LENGTH_REQUIRED)
+  let Some(body_size) = req.body().size_hint().upper() else {
+    return status_response(StatusCode::LENGTH_REQUIRED)
   };
 
   if body_size > MAX_HTTP_BODY_SIZE {
@@ -139,7 +138,7 @@ const fn create_additional_acceptor() {}
 
 async fn create_tcp_listener(addr: SocketAddr) -> TcpListener {
   let listener = TcpListener::bind(addr).await.unwrap_or_else(|err| {
-    exit_with_error(format!("Create address listener error: {}", err))
+    exit_with_error(format!("Create address listener error: {err}"))
   });
 
   info!("Listening on http://{}", addr);
@@ -161,6 +160,8 @@ async fn serve_connection<I>(stream: I, service: Service)
 where
   I: AsyncRead + AsyncWrite + Unpin + Send + 'static
 {
+  // MAX_HTTP_BODY_SIZE const will not be more than u32::MAX, so truncation is impossible
+  #[allow(clippy::cast_possible_truncation)]
   let connection = Builder::new()
     .max_buf_size(MAX_HTTP_BODY_SIZE as usize)
     .serve_connection(stream, service)

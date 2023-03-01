@@ -11,9 +11,9 @@ fn check_config_path(path: PathBuf) -> Option<PathBuf> {
     Ok(metadata) => {
       if metadata.is_file() {
         return Some(path)
-      } else {
-        Error::new(ErrorKind::InvalidInput, "path is directory")
       }
+
+      Error::new(ErrorKind::InvalidInput, "path is directory")
     },
     Err(err) => match err.kind() {
       ErrorKind::NotFound => return None,
@@ -38,12 +38,11 @@ fn try_add_file_source(
   builder: ConfigBuilder<DefaultState>, path: PathBuf, need_check: bool
 ) -> ConfigBuilder<DefaultState> {
   let path = if need_check {
-    match check_config_path(path.clone()) {
-      Some(path) => path,
-      None => {
-        debug!("Config file \"{}\" not found", path.display());
-        return builder
-      }
+    if let Some(path) = check_config_path(path.clone()) {
+      path
+    } else {
+      debug!("Config file \"{}\" not found", path.display());
+      return builder
     }
   } else {
     path
@@ -117,16 +116,17 @@ pub fn init() -> Settings {
   // In Some variant local variable `builder` rewrites,
   // so Option::map_or_else with closures is not work
   #[allow(clippy::option_if_let_else)]
-  match search_config_current_recurse(&CURRENT_PATH) {
-    Some(path) => builder = try_add_file_source(builder, path, false),
-    None => debug!("Config file not found in current directory tree")
+  if let Some(path) = search_config_current_recurse(&CURRENT_PATH) {
+    builder = try_add_file_source(builder, path, false);
+  } else {
+    debug!("Config file not found in current directory tree");
   }
 
   builder = builder.add_source(Environment::with_prefix("settlers"));
 
   let config = match builder.build() {
     Ok(config) => config,
-    Err(err) => exit_with_error(format!("Build config error: {}", err))
+    Err(err) => exit_with_error(format!("Build config error: {err}"))
   };
 
   let mut settings: Settings = match deserialize(config) {

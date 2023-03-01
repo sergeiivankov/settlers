@@ -40,7 +40,7 @@ where
 {
   let mut stmts = create_statements(manager, entity);
 
-  manager.create_table(stmts.0.if_not_exists().to_owned()).await?;
+  manager.create_table(stmts.0.if_not_exists().clone()).await?;
   for index_create_stmt in stmts.1 {
     manager.create_index(index_create_stmt).await?;
   }

@@ -1,5 +1,5 @@
 #![deny(clippy::all)]
-//#![deny(clippy::pedantic)]
+#![deny(clippy::pedantic)]
 //#![deny(clippy::restriction)]
 #![deny(clippy::nursery)]
 #![deny(clippy::cargo)]
@@ -61,7 +61,7 @@ fn main() {
   env_logger_builder.init();
 
   let runtime = RuntimeBuilder::new_multi_thread().enable_io().enable_time().build()
-    .unwrap_or_else(|err| exit_with_error(format!("Create tokio runtime error: {}", err)));
+    .unwrap_or_else(|err| exit_with_error(format!("Create tokio runtime error: {err}")));
 
   runtime.block_on(async {
     let db_connect_options = ConnectOptions::new(SETTINGS.database.url.clone())
@@ -75,7 +75,7 @@ fn main() {
       // To control database logging, use "sqlx=level" in "log" config value
       .sqlx_logging_level(LevelFilter::Debug)
       .sqlx_logging(true)
-      .to_owned();
+      .clone();
 
     let db = match Database::connect(db_connect_options).await {
       Ok(connection) => connection,
@@ -83,7 +83,7 @@ fn main() {
     };
 
     if let Err(err) = Migrator::up(&db, None).await {
-      exit_with_error(format!("Database migration error: {}", err))
+      exit_with_error(format!("Database migration error: {err}"))
     }
 
     let (intermedium_stop_sender, intermedium_stop_receiver) = channel::<()>();
@@ -93,14 +93,14 @@ fn main() {
     let mut intermedium = Intermedium::new(communicator.clone(), receiver);
 
     let intermedium_handle = spawn(async move {
-      intermedium.run(intermedium_stop_receiver).await
+      intermedium.run(intermedium_stop_receiver).await;
     });
 
     let http_handle = spawn(start(communicator, http_stop_receiver));
 
     let stop_handle = spawn(async move {
       if let Err(err) = ctrl_c().await {
-        exit_with_error(format!("Receive Ctrl-C signal error: {}", err))
+        exit_with_error(format!("Receive Ctrl-C signal error: {err}"))
       }
 
       debug!("Received Ctrl-C signal");

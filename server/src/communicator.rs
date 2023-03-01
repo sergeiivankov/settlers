@@ -36,15 +36,12 @@ impl Communicator {
     (id, self.sender.clone(), peer_receiver)
   }
 
-  pub fn remove(&mut self, id: &u32) {
-    self.peers.remove(id);
+  pub fn remove(&mut self, id: u32) {
+    self.peers.remove(&id);
   }
 
-  pub fn send(&self, id: &u32, data: String) -> bool {
-    let sender = match self.peers.get(id) {
-      Some(sender) => sender,
-      None => return false
-    };
+  pub fn send(&self, id: u32, data: String) -> bool {
+    let Some(sender) = self.peers.get(&id) else { return false };
 
     match sender.send(data) {
       Ok(_) => true,

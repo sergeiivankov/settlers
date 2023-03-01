@@ -21,8 +21,8 @@ use super::helpers::{
   WEB_SOCKET_CONFIG, HttpResponse, PreBuiltHeader, header_value, status_response
 };
 
-fn get_header_str(name: HeaderName, headers: &HeaderMap) -> Option<&str> {
-  headers.get(&name).and_then(|value| match value.to_str() {
+fn get_header_str<'a>(name: &HeaderName, headers: &'a HeaderMap) -> Option<&'a str> {
+  headers.get(name).and_then(|value| match value.to_str() {
     Ok(value) => Some(value),
     Err(err) => {
       debug!("Convert header \"{}\" to str error: {}", name, err);
@@ -60,22 +60,21 @@ async fn handle_connection(
         }
       },
       to = receiver.recv() => {
-        match to {
-          Some(data) => if let Err(err) = write.send(Message::Text(data)).await {
+        if let Some(data) = to {
+          if let Err(err) = write.send(Message::Text(data)).await {
             debug!("Send WS message {} error: {}", id, err);
             break
-          },
-          None => {
-            error!("Sender to peer closed before it remove from communicator {}", id);
-            break
           }
+        } else {
+          error!("Sender to peer closed before it remove from communicator {}", id);
+          break
         }
       }
     }
   }
 
   let mut communicator_lock = communicator.lock().await;
-  communicator_lock.remove(&id);
+  communicator_lock.remove(id);
   drop(communicator_lock);
 
   let mut stream = match write.reunite(read) {
@@ -87,9 +86,8 @@ async fn handle_connection(
   };
 
   if let Err(err) = stream.close(None).await {
-    match err {
-      Error::ConnectionClosed => {},
-      _ => error!("Close WS stream {} error: {}", id, err)
+    if !matches!(err, Error::ConnectionClosed) {
+      error!("Close WS stream {} error: {}", id, err);
     }
   }
 }
@@ -103,15 +101,12 @@ pub async fn ws(
 
   if req.method() != Method::GET
   || version != Version::HTTP_11
-  || !path.is_empty()
   || key_option.is_none()
-  || !get_header_str(CONNECTION, headers)
-       .map(|s| s.split(&[' ', ',']).any(|p| p.eq_ignore_ascii_case("upgrade")))
-       .unwrap_or(false)
-  || !get_header_str(UPGRADE, headers)
-       .map(|s| s.eq_ignore_ascii_case("websocket"))
-       .unwrap_or(false)
-  || !headers.get(SEC_WEBSOCKET_VERSION).map(|v| v == "13").unwrap_or(false)
+  || !path.is_empty()
+  || !headers.get(SEC_WEBSOCKET_VERSION).map_or(false, |v| v == "13")
+  || !get_header_str(&UPGRADE, headers).map_or(false, |s| s.eq_ignore_ascii_case("websocket"))
+  || !get_header_str(&CONNECTION, headers)
+       .map_or(false, |s| s.split(&[' ', ',']).any(|p| p.eq_ignore_ascii_case("upgrade")))
   {
     debug!("Check creating WS connection error: {:?}", req);
     return status_response(StatusCode::BAD_REQUEST)

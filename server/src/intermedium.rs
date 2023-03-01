@@ -16,7 +16,7 @@ impl Intermedium {
     }
   }
 
-  async fn send(&self, id: &u32, data: String) -> bool {
+  async fn send(&self, id: u32, data: String) -> bool {
     let communicator_lock = self.communicator.lock().await;
     communicator_lock.send(id, data)
   }
@@ -30,9 +30,9 @@ impl Intermedium {
     loop {
       select! {
         (id, data) = self.receive() => {
-          println!("Data received {}: {}", id, data);
-          let result = self.send(&id, data).await;
-          println!("Send result {}: {}", id, result);
+          println!("Data received {id}: {data}");
+          let result = self.send(id, data).await;
+          println!("Send result {id}: {result}");
         },
         _ = &mut stop_receiver => {
           debug!("Graceful intermedium shutdown");

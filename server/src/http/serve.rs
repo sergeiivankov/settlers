@@ -1,7 +1,7 @@
 use http_body_util::Full;
 use hyper::{ body::Incoming, header::{ CONTENT_TYPE, HeaderValue }, Response, Request, StatusCode };
 use log::debug;
-use std::path::{ Component, Path, PathBuf };
+use std::{ clone::Clone, path::{ Component, Path, PathBuf } };
 use crate::settings::SETTINGS;
 use super::helpers::{ MIME_TYPES, HttpResponse, PreBuiltHeader, header_value, status_response };
 
@@ -98,7 +98,7 @@ fn get_mime_type(path: &str) -> HeaderValue {
 
   MIME_TYPES.get(ext).map_or_else(
     || header_value(PreBuiltHeader::ApplicationOctetStream),
-    |mime_type| mime_type.clone()
+    Clone::clone
   )
 }
 
@@ -166,12 +166,9 @@ pub async fn serve(path: &str, req: Request<Incoming>) -> HttpResponse {
       };
     }
 
-    let path_str = match normalized_path.to_str() {
-      Some(path_str) => path_str,
-      None => {
-        debug!("Convert path \"{}\" to str error", normalized_path.display());
-        return status_response(StatusCode::INTERNAL_SERVER_ERROR)
-      }
+    let Some(path_str) = normalized_path.to_str() else {
+      debug!("Convert path \"{}\" to str error", normalized_path.display());
+      return status_response(StatusCode::INTERNAL_SERVER_ERROR)
     };
 
     String::from(path_str)
