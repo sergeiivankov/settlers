@@ -38,10 +38,10 @@ mod settings;
 use dotenv::dotenv;
 use env_logger::Builder as EnvLoggerBuilder;
 use lazy_static::initialize;
-use log::{ LevelFilter, debug, error };
+use log::{ Level, LevelFilter, debug, error };
 use sea_orm::{ ConnectOptions, Database };
 use sea_orm_migration::MigratorTrait;
-use std::time::Duration;
+use std::{ io::Write, time::Duration };
 use tokio::{
   runtime::Builder as RuntimeBuilder, signal::ctrl_c, sync::oneshot::channel, join, spawn
 };
@@ -61,6 +61,17 @@ fn main() {
   // For logging initialization "log" config value usage
   let mut env_logger_builder = EnvLoggerBuilder::new();
   env_logger_builder.parse_filters(SETTINGS.log.as_ref().unwrap());
+  env_logger_builder.format(|buf, record| {
+    let level = match record.level() {
+      Level::Debug => "DBG",
+      Level::Error => "ERR",
+      Level::Info => "INF",
+      Level::Trace => "TRC",
+      Level::Warn => "WRN"
+    };
+
+    writeln!(buf, "{} {level} {}", buf.timestamp_seconds(), record.args())
+  });
 
   // Disable rustls crate logging by default (in particular, self-signed certificate client error)
   // TODO: if https://github.com/launchbadge/sqlx/pull/2371 will be accepted,
