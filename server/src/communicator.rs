@@ -46,7 +46,7 @@ impl Communicator {
     match sender.send(data) {
       Ok(_) => true,
       Err(err) => {
-        debug!("Send data to peer {} error: {}", id, err);
+        debug!("Send data to peer {id} error: {err}");
         false
       }
     }

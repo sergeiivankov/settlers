@@ -52,7 +52,7 @@ fn try_add_file_source(
     exit_with_error(format!("Convert path \"{}\" to str error", path.display()))
   });
 
-  info!("Config source added \"{}\"", path_str);
+  info!("Config source added \"{path_str}\"");
   builder.add_source(File::with_name(path_str))
 }
 

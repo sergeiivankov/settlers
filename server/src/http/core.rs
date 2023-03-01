@@ -59,7 +59,7 @@ async fn handle_connection(
   };
 
   if body_size > MAX_HTTP_BODY_SIZE {
-    debug!("HTTP body too large: {} > {}", body_size, MAX_HTTP_BODY_SIZE);
+    debug!("HTTP body too large: {body_size} > {MAX_HTTP_BODY_SIZE}");
     return status_response(StatusCode::PAYLOAD_TOO_LARGE)
   }
 
@@ -141,7 +141,7 @@ async fn create_tcp_listener(addr: SocketAddr) -> TcpListener {
     exit_with_error(format!("Create address listener error: {err}"))
   });
 
-  info!("Listening on http://{}", addr);
+  info!("Listening on http://{addr}");
 
   listener
 }
@@ -150,7 +150,7 @@ async fn accept_connection(listener: &TcpListener) -> Option<(TcpStream, SocketA
   match listener.accept().await {
     Ok(connection) => Some(connection),
     Err(err) => {
-      debug!("Accept TCP connection error: {}", err);
+      debug!("Accept TCP connection error: {err}");
       None
     }
   }
@@ -167,7 +167,7 @@ where
     .serve_connection(stream, service)
     .with_upgrades();
 
-  connection.await.unwrap_or_else(|err| debug!("Handle connection error: {}", err));
+  connection.await.unwrap_or_else(|err| debug!("Handle connection error: {err}"));
 }
 
 #[cfg(feature = "secure_server")]
@@ -187,7 +187,7 @@ async fn run(
           let stream = match acceptor.accept(stream).await {
             Ok(stream) => stream,
             Err(err) => {
-              debug!("Accept TLS connection error: {}", err);
+              debug!("Accept TLS connection error: {err}");
               return
             }
           };

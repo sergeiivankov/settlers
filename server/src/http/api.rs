@@ -4,8 +4,8 @@ use hyper::{ body::Incoming, Request, StatusCode };
 use lazy_static::lazy_static;
 use log::debug;
 use std::collections::HashMap;
-use crate::protos::{
-  auth::{ CheckTokenParams, CheckTokenResult, CheckTokenTestParams, CheckTokenTestResult }
+use crate::protos::auth::{
+  CheckTokenParams, CheckTokenResult, CheckTokenTestParams, CheckTokenTestResult
 };
 use super::helpers::{
   MAX_API_BODY_SIZE, HttpResponse, status_response,
@@ -47,7 +47,7 @@ pub async fn api(path: &str, req: Request<Incoming>, body_size: u64) -> HttpResp
   // Check API request maximum body size before read it
   // TODO: if upload profile picture method name changed, change it too
   if path != "upload_picture" && body_size > MAX_API_BODY_SIZE {
-    debug!("API body too large: {} > {}", body_size, MAX_API_BODY_SIZE);
+    debug!("API body too large: {body_size} > {MAX_API_BODY_SIZE}");
     return status_response(StatusCode::PAYLOAD_TOO_LARGE)
   }
 
@@ -56,7 +56,7 @@ pub async fn api(path: &str, req: Request<Incoming>, body_size: u64) -> HttpResp
   };
   let body = collected.to_bytes();
 
-  debug!("Received HTTP body for \"{}\": {:?}", path, body);
+  debug!("Received HTTP body for \"{path}\": {body:?}");
 
   let route_handler_option = ROUTE_HANDLERS.get(path);
   // SAFETY: at start of function we checked that ROUTES contains passed `path` key

@@ -25,7 +25,7 @@ fn get_header_str<'a>(name: &HeaderName, headers: &'a HeaderMap) -> Option<&'a s
   headers.get(name).and_then(|value| match value.to_str() {
     Ok(value) => Some(value),
     Err(err) => {
-      debug!("Convert header \"{}\" to str error: {}", name, err);
+      debug!("Convert header \"{name}\" to str error: {err}");
       None
     }
   })
@@ -47,12 +47,12 @@ async fn handle_connection(
           Some(result) => match result {
             Ok(message) => if let Message::Text(data) = message {
               if let Err(err) = sender.send((id, data)) {
-                error!("Send from peer {} error: {}", id, err);
+                error!("Send from peer {id} error: {err}");
                 break
               }
             },
             Err(err) => {
-              debug!("Receive WS message {} error: {}", id, err);
+              debug!("Receive WS message {id} error: {err}");
               break
             }
           },
@@ -62,11 +62,11 @@ async fn handle_connection(
       to = receiver.recv() => {
         if let Some(data) = to {
           if let Err(err) = write.send(Message::Text(data)).await {
-            debug!("Send WS message {} error: {}", id, err);
+            debug!("Send WS message {id} error: {err}");
             break
           }
         } else {
-          error!("Sender to peer closed before it remove from communicator {}", id);
+          error!("Sender to peer closed before it remove from communicator {id}");
           break
         }
       }
@@ -80,14 +80,14 @@ async fn handle_connection(
   let mut stream = match write.reunite(read) {
     Ok(stream) => stream,
     Err(err) => {
-      error!("Reunite WS stream parts {} error: {}", id, err);
+      error!("Reunite WS stream parts {id} error: {err}");
       return
     }
   };
 
   if let Err(err) = stream.close(None).await {
     if !matches!(err, Error::ConnectionClosed) {
-      error!("Close WS stream {} error: {}", id, err);
+      error!("Close WS stream {id} error: {err}");
     }
   }
 }
@@ -108,7 +108,7 @@ pub async fn ws(
   || !get_header_str(&CONNECTION, headers)
        .map_or(false, |s| s.split(&[' ', ',']).any(|p| p.eq_ignore_ascii_case("upgrade")))
   {
-    debug!("Check creating WS connection error: {:?}", req);
+    debug!("Check creating WS connection error: {req:?}");
     return status_response(StatusCode::BAD_REQUEST)
   }
 
@@ -122,7 +122,7 @@ pub async fn ws(
         WebSocketStream::from_raw_socket(upgraded, Role::Server, Some(*WEB_SOCKET_CONFIG)).await,
         communicator
       ).await,
-      Err(err) => debug!("Upgrade HTTP connection error: {}", err)
+      Err(err) => debug!("Upgrade HTTP connection error: {err}")
     }
   });
 

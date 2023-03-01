@@ -159,7 +159,7 @@ pub async fn serve(path: &str, req: Request<Incoming>) -> HttpResponse {
     for component in Path::new(path).components() {
       match component {
         Component::Prefix(_) | Component::CurDir | Component::RootDir | Component::ParentDir => {
-          debug!("Found special path component {:?} in \"{}\"", component, path);
+          debug!("Found special path component {component:?} in \"{path}\"");
           return status_response(StatusCode::NOT_FOUND)
         },
         Component::Normal(c) => normalized_path.push(c)

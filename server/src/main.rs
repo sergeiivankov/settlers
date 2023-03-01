@@ -130,13 +130,13 @@ fn main() {
     );
 
     if let Err(err) = intermedium_join_result {
-      error!("Join intermedium task error: {}", err);
+      error!("Join intermedium task error: {err}");
     }
     if let Err(err) = http_join_result {
-      error!("Join http task error: {}", err);
+      error!("Join http task error: {err}");
     }
     if let Err(err) = stop_join_result {
-      error!("Join stop task error: {}", err);
+      error!("Join stop task error: {err}");
     }
   });
 }

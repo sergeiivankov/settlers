@@ -103,7 +103,7 @@ pub fn status_response(code: StatusCode) -> HttpResponse {
 pub fn deserialize_api_params<'a, R: MessageRead<'a>>(body: &'a Bytes) -> Result<R, HttpResponse> {
   let mut reader = BytesReader::from_bytes(body);
   R::from_reader(&mut reader, body).map_err(|err| {
-    debug!("Read API params error: {}", err);
+    debug!("Read API params error: {err}");
     status_response(StatusCode::BAD_REQUEST)
   })
 }
