@@ -113,8 +113,13 @@ pub fn deserialize_api_params<'a, R: MessageRead<'a>>(body: &'a Bytes) -> Result
 // so instanted result structure not used later
 #[allow(clippy::needless_pass_by_value)]
 pub fn serialize_api_response<W: MessageWrite>(result: W) -> HttpResponse {
-  let mut writer = BytesMut::zeroed(result.get_size()).writer();
+  let size = result.get_size();
 
+  let mut bytes = BytesMut::with_capacity(size);
+  // SAFETY: bytes fully overwritten by `size` length before pass into `Response`
+  unsafe { bytes.set_len(size) };
+
+  let mut writer = bytes.writer();
   let write_result = result.write_message(&mut Writer::new(&mut writer));
   // SAFETY: WriterBackend implements may return only UnexpectedEndOfBuffer Err variant,
   //         which mean that writer is not long enough, but we create buffer with correct length
