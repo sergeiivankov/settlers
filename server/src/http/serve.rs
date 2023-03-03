@@ -15,15 +15,17 @@ use tokio::fs::read;
 #[cfg(feature = "public_resources_caching")]
 use bytes::Bytes;
 #[cfg(feature = "public_resources_caching")]
+use flate2::{ write::GzEncoder, Compression };
+#[cfg(feature = "public_resources_caching")]
 use hex::encode;
 #[cfg(feature = "public_resources_caching")]
-use hyper::header::{ ETAG, IF_NONE_MATCH };
+use hyper::header::{ CONTENT_ENCODING, ETAG, IF_NONE_MATCH };
 #[cfg(feature = "public_resources_caching")]
 use lazy_static::lazy_static;
 #[cfg(feature = "public_resources_caching")]
 use sha1::{ Sha1, Digest };
 #[cfg(feature = "public_resources_caching")]
-use std::{ collections::HashMap, fs::read };
+use std::{ collections::HashMap, fs::read, io::Write };
 #[cfg(feature = "public_resources_caching")]
 use tokio::sync::Mutex;
 #[cfg(feature = "public_resources_caching")]
@@ -32,9 +34,13 @@ use walkdir::WalkDir;
 use crate::helpers::exit_with_error;
 
 #[cfg(feature = "public_resources_caching")]
+const GZIP_BLACKLIST: &[&str] = &["woff2"];
+
+#[cfg(feature = "public_resources_caching")]
 pub struct ResourceCache {
   mime_type: HeaderValue,
   etag: HeaderValue,
+  is_gzipped: bool,
   body: Full<Bytes>
 }
 
@@ -65,7 +71,7 @@ lazy_static! {
         exit_with_error(&format!("Convert path \"{}\" to str error", path.display()))
       });
 
-      let content = read(path).unwrap_or_else(|err| {
+      let mut content = read(path).unwrap_or_else(|err| {
         exit_with_error(&format!("Read file \"{}\" error: {err}", path.display()))
       });
 
@@ -77,12 +83,25 @@ lazy_static! {
         exit_with_error(&format!("Create \"Etag\" header value for \"{path_str}\" error: {etag}"))
       });
 
+      let is_gzipped = if GZIP_BLACKLIST.contains(&get_ext(path_str)) { false } else {
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::best());
+        encoder.write_all(&content).unwrap_or_else(|err| {
+          exit_with_error(&format!("Gzip encoder write for \"{path_str}\" error: {err}"))
+        });
+        content = encoder.finish().unwrap_or_else(|err| {
+          exit_with_error(&format!("Gzip encoder finish for \"{path_str}\" error: {err}"))
+        });
+
+        true
+      };
+
       // Cut off path to public resources directory part from full public resource path
       let key = String::from(&path_str[(SETTINGS.public_resources_path.len() + 1)..]);
 
       cache.insert(key, ResourceCache {
         mime_type: get_mime_type(path_str),
         etag: etag_value,
+        is_gzipped,
         body: Full::new(content.into())
       });
     }
@@ -91,10 +110,12 @@ lazy_static! {
   };
 }
 
-fn get_mime_type(path: &str) -> HeaderValue {
-  let ext = path.rsplit_once('.').map_or("", |parts| parts.1);
+fn get_ext(path: &str) -> &str {
+  path.rsplit_once('.').map_or("", |parts| parts.1)
+}
 
-  MIME_TYPES.get(ext).map_or_else(
+fn get_mime_type(path: &str) -> HeaderValue {
+  MIME_TYPES.get(get_ext(path)).map_or_else(
     || header_value(PreBuiltHeader::ApplicationOctetStream),
     Clone::clone
   )
@@ -118,6 +139,9 @@ async fn get_response_data(path: String, req: Request<Incoming>) -> HttpResponse
     let headers = response.headers_mut();
     headers.insert(CONTENT_TYPE, resource_cache.mime_type.clone());
     headers.insert(ETAG, resource_cache.etag.clone());
+    if resource_cache.is_gzipped {
+      headers.insert(CONTENT_ENCODING, header_value(PreBuiltHeader::Gzip));
+    }
 
     return response
   }

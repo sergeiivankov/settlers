@@ -28,7 +28,9 @@ use self::{
 };
 
 #[cfg(feature = "public_resources_caching")]
-use self::serve::PUBLIC_RESOURCES_CACHE;
+use hyper::header::ACCEPT_ENCODING;
+#[cfg(feature = "public_resources_caching")]
+use self::{ helpers::header_list_contains, serve::PUBLIC_RESOURCES_CACHE };
 
 #[cfg(feature = "secure_server")]
 use rustls_pemfile::{ certs, rsa_private_keys };
@@ -110,7 +112,17 @@ async fn handle_connection(
   let (section, subpath) = build_section_subpath(path);
 
   match section {
-    "public" => serve(&subpath, req).await,
+    "public" => {
+      #[cfg(feature = "public_resources_caching")]
+      {
+        let headers = req.headers();
+        if !header_list_contains(headers, &ACCEPT_ENCODING, "gzip") {
+          return status_response(StatusCode::UNSUPPORTED_MEDIA_TYPE)
+        }
+      }
+
+      serve(&subpath, req).await
+    },
     "api" => {
       let mut response = api(&subpath, req, body_size).await;
       let headers = response.headers_mut();

@@ -4,8 +4,7 @@ use http_body_util::Full;
 use hyper::{
   body::Incoming,
   header::{
-    CONNECTION, SEC_WEBSOCKET_ACCEPT, SEC_WEBSOCKET_KEY, SEC_WEBSOCKET_VERSION, UPGRADE,
-    HeaderMap, HeaderName, HeaderValue
+    CONNECTION, SEC_WEBSOCKET_ACCEPT, SEC_WEBSOCKET_KEY, SEC_WEBSOCKET_VERSION, UPGRADE, HeaderValue
   },
   upgrade::{ Upgraded, on },
   Method, Request, Response, StatusCode, Version
@@ -18,18 +17,9 @@ use tokio_tungstenite::{
 };
 use crate::communicator::Communicator;
 use super::helpers::{
-  WEB_SOCKET_CONFIG, HttpResponse, PreBuiltHeader, header_value, status_response
+  WEB_SOCKET_CONFIG, HttpResponse, PreBuiltHeader,
+  header_value, get_header_str, header_list_contains, status_response
 };
-
-fn get_header_str<'a>(name: &HeaderName, headers: &'a HeaderMap) -> Option<&'a str> {
-  headers.get(name).and_then(|value| match value.to_str() {
-    Ok(value) => Some(value),
-    Err(err) => {
-      debug!("Convert header \"{name}\" to str error: {err}");
-      None
-    }
-  })
-}
 
 async fn handle_connection(
   stream: WebSocketStream<Upgraded>, communicator: Arc<Mutex<Communicator>>
@@ -104,9 +94,8 @@ pub async fn ws(
   || key_option.is_none()
   || !path.is_empty()
   || !headers.get(SEC_WEBSOCKET_VERSION).map_or(false, |v| v == "13")
-  || !get_header_str(&UPGRADE, headers).map_or(false, |s| s.eq_ignore_ascii_case("websocket"))
-  || !get_header_str(&CONNECTION, headers)
-       .map_or(false, |s| s.split(&[' ', ',']).any(|p| p.eq_ignore_ascii_case("upgrade")))
+  || !get_header_str(headers, &UPGRADE).map_or(false, |s| s.eq_ignore_ascii_case("websocket"))
+  || !header_list_contains(headers, &CONNECTION, "upgrade")
   {
     debug!("Check creating WS connection error: {req:?}");
     return status_response(StatusCode::BAD_REQUEST)

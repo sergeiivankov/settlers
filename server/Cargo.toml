@@ -20,6 +20,7 @@ dirs = "4.0.0"
 dotenv = "0.15.0"
 env_logger = { version = "0.10.0", default-features = false, features = ["humantime"] }
 fastrand = "1.9.0"
+flate2 = { version = "1.0.25", optional = true }
 futures-util = { version = "0.3.26", default-features = false, features = ["sink", "std"] }
 hex = { version = "0.4.3", optional = true }
 http-body-util = "0.1.0-rc.2"
@@ -49,7 +50,7 @@ default = ["db_sqlite"]
 db_mysql = ["sea-orm/sqlx-mysql", "sea-orm-migration/sqlx-mysql"]
 db_postgres = ["sea-orm/sqlx-postgres", "sea-orm-migration/sqlx-postgres"]
 db_sqlite = ["sea-orm/sqlx-sqlite", "sea-orm-migration/sqlx-sqlite"]
-public_resources_caching = ["hex", "sha-1", "walkdir"]
+public_resources_caching = ["flate2", "hex", "sha-1", "walkdir"]
 secure_server = ["rustls-pemfile", "tokio-rustls"]
 release_max_level_debug = ["log/release_max_level_debug"]
 rustls_logging = []

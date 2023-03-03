@@ -2,7 +2,29 @@ use pb_rs::{ types::FileDescriptor, ConfigBuilder };
 use std::{ env::var, fs::{ create_dir_all, remove_dir_all }, path::{ MAIN_SEPARATOR, PathBuf } };
 use walkdir::WalkDir;
 
+#[cfg(feature = "public_resources_caching")]
+use std::process::Command;
+
 fn main() {
+  #[cfg(feature = "public_resources_caching")]
+  {
+    println!("cargo:rerun-if-changed=../client");
+
+    let output = Command::new("cmd")
+      .arg("/c npm run build")
+      .current_dir("../client")
+      .output()
+      .unwrap();
+
+    if !output.status.success() {
+      panic!(
+        "{}{}",
+        String::from_utf8(output.stdout).unwrap(),
+        String::from_utf8(output.stderr).unwrap()
+      )
+    }
+  }
+
   println!("cargo:rerun-if-changed=../protos");
 
   let cargo_manifest_dir_path = PathBuf::from(&var("CARGO_MANIFEST_DIR").unwrap());

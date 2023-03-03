@@ -1,6 +1,6 @@
 use bytes::{ BufMut, Bytes, BytesMut };
 use http_body_util::Full;
-use hyper::{ header::{ CONTENT_TYPE, HeaderValue }, Response, StatusCode };
+use hyper::{ header::{ CONTENT_TYPE, HeaderMap, HeaderName, HeaderValue }, Response, StatusCode };
 use lazy_static::lazy_static;
 use log::debug;
 use quick_protobuf::{ BytesReader, MessageRead, MessageWrite, Writer };
@@ -71,6 +71,8 @@ pub enum PreBuiltHeader {
   ApplicationOctetStream,
   #[strum(serialize = "no-store, must-revalidate")]
   DisableCache,
+  #[strum(serialize = "gzip")]
+  Gzip,
   #[strum(serialize = "text/plain")]
   TextPlain,
   #[strum(serialize = "Upgrade")]
@@ -87,6 +89,21 @@ pub fn header_value(key: PreBuiltHeader) -> HeaderValue {
   //         so HashMap contain them all as keys
   let value = unsafe { value_option.unwrap_unchecked() };
   value.clone()
+}
+
+pub fn get_header_str<'a>(headers: &'a HeaderMap, name: &HeaderName) -> Option<&'a str> {
+  headers.get(name).and_then(|value| match value.to_str() {
+    Ok(value) => Some(value),
+    Err(err) => {
+      debug!("Convert header \"{name}\" to str error: {err}");
+      None
+    }
+  })
+}
+
+pub fn header_list_contains(headers: &HeaderMap, name: &HeaderName, element: &str) -> bool {
+  get_header_str(headers, name)
+    .map_or(false, |s| s.split(&[' ', ',']).any(|p| p.eq_ignore_ascii_case(element)))
 }
 
 pub fn status_response(code: StatusCode) -> HttpResponse {
