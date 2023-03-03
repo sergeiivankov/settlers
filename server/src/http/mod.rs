@@ -231,16 +231,16 @@ async fn run(
 
         spawn(async move {
           let acceptor = acceptor_clone.lock().await;
+          let stream_result = acceptor.accept(stream).await;
+          drop(acceptor);
 
-          let stream = match acceptor.accept(stream).await {
+          let stream = match stream_result {
             Ok(stream) => stream,
             Err(err) => {
               debug!("Accept TLS connection error: {err}");
               return
             }
           };
-
-          drop(acceptor);
 
           serve_connection(stream, service_clone).await;
         });
