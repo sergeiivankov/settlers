@@ -22,7 +22,7 @@ dotenv = "0.15.0"
 env_logger = { version = "0.10.0", default-features = false, features = ["humantime"] }
 fastrand = "1.9.0"
 flate2 = { version = "1.0.25", optional = true }
-futures-util = { version = "0.3.26", default-features = false, features = ["sink", "std"] }
+futures-util = { version = "0.3.27", default-features = false, features = ["sink", "std"] }
 hex = { version = "0.4.3", optional = true }
 http-body-util = "0.1.0-rc.2"
 hyper = { version = "1.0.0-rc.3", features = ["server", "http1"] }
@@ -30,10 +30,10 @@ lazy_static = "1.4.0"
 log = { version = "0.4.17", features = ["max_level_debug", "release_max_level_info"] }
 quick-protobuf = "0.8.1"
 rustls-pemfile = { version = "1.0.2", optional = true }
-sea-orm = { version = "0.11.0", default-features = false, features = ["macros", "runtime-tokio-rustls"] }
-sea-orm-migration = { version = "0.11.0", default-features = false, features = ["runtime-tokio-rustls"] }
+sea-orm = { version = "0.11.1", default-features = false, features = ["macros", "runtime-tokio-rustls"] }
+sea-orm-migration = { version = "0.11.1", default-features = false, features = ["runtime-tokio-rustls"] }
 sea-query = "0.28.3"
-serde = { version = "1.0.154", features = ["derive"] }
+serde = { version = "1.0.156", features = ["derive"] }
 serde_path_to_error = "0.1.10"
 sha-1 = { version = "0.10.1", optional = true }
 strum = { version = "0.24.1", features = ["derive"] }

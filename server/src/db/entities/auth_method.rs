@@ -1,5 +1,5 @@
 use sea_orm::{
-  ActiveModelBehavior, ColumnTypeTrait, DeriveActiveEnum, DeriveEntityModel, DerivePrimaryKey,
+  ActiveModelBehavior, DeriveActiveEnum, DeriveEntityModel, DerivePrimaryKey,
   DeriveRelation, EntityTrait, EnumIter, PrimaryKeyTrait
 };
 
