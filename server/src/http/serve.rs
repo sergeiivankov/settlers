@@ -2,41 +2,59 @@ use http_body_util::Full;
 use hyper::{ body::Incoming, header::{ CONTENT_TYPE, HeaderValue }, Response, Request, StatusCode };
 use log::debug;
 use std::{ clone::Clone, path::{ Component, Path, PathBuf } };
-use crate::settings::SETTINGS;
 use super::helpers::{ MIME_TYPES, HttpResponse, PreBuiltHeader, header_value, status_response };
 
-#[cfg(not(feature = "public_resources_caching"))]
+#[cfg(not(feature = "client_resources_caching"))]
+use std::path::MAIN_SEPARATOR as SEP;
+
+#[cfg(not(feature = "client_resources_packing"))]
+use crate::settings::SETTINGS;
+
+#[cfg(not(any(feature = "client_resources_caching", feature = "client_resources_packing")))]
 use log::{ Level, log };
-#[cfg(not(feature = "public_resources_caching"))]
-use std::{ io::ErrorKind, path::MAIN_SEPARATOR };
-#[cfg(not(feature = "public_resources_caching"))]
+#[cfg(not(any(feature = "client_resources_caching", feature = "client_resources_packing")))]
+use std::io::ErrorKind;
+#[cfg(not(any(feature = "client_resources_caching", feature = "client_resources_packing")))]
 use tokio::fs::read;
 
-#[cfg(feature = "public_resources_caching")]
-use bytes::Bytes;
-#[cfg(feature = "public_resources_caching")]
-use flate2::{ write::GzEncoder, Compression };
-#[cfg(feature = "public_resources_caching")]
-use hex::encode;
-#[cfg(feature = "public_resources_caching")]
-use hyper::header::{ CONTENT_ENCODING, ETAG, IF_NONE_MATCH };
-#[cfg(feature = "public_resources_caching")]
-use lazy_static::lazy_static;
-#[cfg(feature = "public_resources_caching")]
-use sha1::{ Sha1, Digest };
-#[cfg(feature = "public_resources_caching")]
-use std::{ collections::HashMap, fs::read, io::Write };
-#[cfg(feature = "public_resources_caching")]
-use tokio::sync::Mutex;
-#[cfg(feature = "public_resources_caching")]
+#[cfg(feature = "client_resources_caching")]
+use std::fs::read;
+#[cfg(feature = "client_resources_caching")]
 use walkdir::WalkDir;
-#[cfg(feature = "public_resources_caching")]
+
+#[cfg(feature = "client_resources_packing")]
+use flate2::write::GzDecoder;
+#[cfg(feature = "client_resources_packing")]
+use std::io::Read;
+#[cfg(feature = "client_resources_packing")]
+use tar::{ Archive, EntryType };
+
+#[cfg(any(feature = "client_resources_caching", feature = "client_resources_packing"))]
+use bytes::Bytes;
+#[cfg(any(feature = "client_resources_caching", feature = "client_resources_packing"))]
+use flate2::{ write::GzEncoder, Compression };
+#[cfg(any(feature = "client_resources_caching", feature = "client_resources_packing"))]
+use hex::encode;
+#[cfg(any(feature = "client_resources_caching", feature = "client_resources_packing"))]
+use hyper::header::{ CONTENT_ENCODING, ETAG, IF_NONE_MATCH };
+#[cfg(any(feature = "client_resources_caching", feature = "client_resources_packing"))]
+use lazy_static::lazy_static;
+#[cfg(any(feature = "client_resources_caching", feature = "client_resources_packing"))]
+use sha1::{ Sha1, Digest };
+#[cfg(any(feature = "client_resources_caching", feature = "client_resources_packing"))]
+use std::{ collections::HashMap, io::Write };
+#[cfg(any(feature = "client_resources_caching", feature = "client_resources_packing"))]
+use tokio::sync::Mutex;
+#[cfg(any(feature = "client_resources_caching", feature = "client_resources_packing"))]
 use crate::helpers::exit_with_error;
 
-#[cfg(feature = "public_resources_caching")]
+#[cfg(feature = "client_resources_packing")]
+const CLIENT_RESOURCES_ARCHIVE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/dist.tar.gz"));
+
+#[cfg(any(feature = "client_resources_caching", feature = "client_resources_packing"))]
 const GZIP_BLACKLIST: &[&str] = &["woff2"];
 
-#[cfg(feature = "public_resources_caching")]
+#[cfg(any(feature = "client_resources_caching", feature = "client_resources_packing"))]
 pub struct ResourceCache {
   mime_type: HeaderValue,
   etag: HeaderValue,
@@ -44,15 +62,15 @@ pub struct ResourceCache {
   body: Full<Bytes>
 }
 
-#[cfg(feature = "public_resources_caching")]
+#[cfg(feature = "client_resources_caching")]
 lazy_static! {
-  // Read all public resources files to cache on server start
+  // Read all client resources files to memory on server start
   // Values in HashMap is strust with mime type HeaderValue, content hash ETAG HeaderValue
   // and ready to return response body
-  pub static ref PUBLIC_RESOURCES_CACHE: Mutex<HashMap<String, ResourceCache>> = {
+  pub static ref CLIENT_RESOURCES: Mutex<HashMap<String, ResourceCache>> = {
     let mut paths = Vec::new();
 
-    for entry_result in WalkDir::new(&SETTINGS.public_resources_path) {
+    for entry_result in WalkDir::new(&SETTINGS.client_resources_path) {
       let entry = entry_result.unwrap_or_else(|err| {
         exit_with_error(&format!("Walk entry error: {err}"))
       });
@@ -96,10 +114,92 @@ lazy_static! {
       };
 
       // Cut off path to public resources directory part from full public resource path
-      let key = String::from(&path_str[(SETTINGS.public_resources_path.len() + 1)..]);
+      let key = String::from(&path_str[(SETTINGS.client_resources_path.len() + 1)..]);
 
       cache.insert(key, ResourceCache {
         mime_type: get_mime_type(path_str),
+        etag: etag_value,
+        is_gzipped,
+        body: Full::new(content.into())
+      });
+    }
+
+    Mutex::new(cache)
+  };
+}
+
+#[cfg(feature = "client_resources_packing")]
+lazy_static! {
+  // Unpack all client resources files from included to binary archive to memory on server start
+  // Values in HashMap is strust with mime type HeaderValue, content hash ETAG HeaderValue
+  // and ready to return response body
+  pub static ref CLIENT_RESOURCES: Mutex<HashMap<String, ResourceCache>> = {
+    let mut decoder = GzDecoder::new(Vec::new());
+    decoder.write_all(CLIENT_RESOURCES_ARCHIVE).unwrap_or_else(|err| {
+      exit_with_error(&format!("Write gzip decoder error: {err}"))
+    });
+    let content = decoder.finish().unwrap_or_else(|err| {
+      exit_with_error(&format!("Finish gzip decoder error: {err}"))
+    });
+
+    let mut entries = Vec::new();
+
+    for entry_result in Archive::new(&content[..]).entries().unwrap() {
+      let mut entry = entry_result.unwrap_or_else(|err| {
+        exit_with_error(&format!("Archive entry error: {err}"))
+      });
+
+      if entry.header().entry_type() != EntryType::Regular {
+        continue
+      }
+
+      let path = entry.path().unwrap_or_else(|err| {
+        exit_with_error(&format!("Get entry path error: {err}"))
+      }).into_owned();
+
+      let path_str = path.to_str().unwrap_or_else(|| {
+        exit_with_error(&format!("Convert path \"{}\" to str error", path.display()))
+      });
+
+      // Client resource will not be more than u32::MAX, so truncation is impossible
+      #[allow(clippy::cast_possible_truncation)]
+      let mut content = vec![0; entry.size() as usize];
+      entry.read_exact(&mut content).unwrap_or_else(|err| {
+        exit_with_error(&format!("Read entry \"{}\" error: {err}", path.display()))
+      });
+
+      entries.push((path_str.to_string(), content));
+    }
+
+    let mut cache = HashMap::with_capacity(entries.len());
+    let mut hasher = Sha1::new();
+
+    for (path_string, mut content) in entries {
+      hasher.update(&content);
+      let hash = hasher.finalize_reset();
+
+      let etag = format!("\"{}\"", encode(hash));
+      let etag_value = HeaderValue::from_str(&etag).unwrap_or_else(|_| {
+        exit_with_error(&format!("Create \"Etag\" header value for \"{path_string}\" error: {etag}"))
+      });
+
+      let is_gzipped = if GZIP_BLACKLIST.contains(&get_ext(&path_string)) { false } else {
+        let mut encoder = GzEncoder::new(Vec::new(), Compression::best());
+        encoder.write_all(&content).unwrap_or_else(|err| {
+          exit_with_error(&format!("Gzip encoder write for \"{path_string}\" error: {err}"))
+        });
+        content = encoder.finish().unwrap_or_else(|err| {
+          exit_with_error(&format!("Gzip encoder finish for \"{path_string}\" error: {err}"))
+        });
+
+        true
+      };
+
+      // Archive path use '/' as separator, so need replace it by current platform separator
+      let key = path_string.clone().replace('/', &SEP.to_string());
+
+      cache.insert(key, ResourceCache {
+        mime_type: get_mime_type(&path_string),
         etag: etag_value,
         is_gzipped,
         body: Full::new(content.into())
@@ -121,9 +221,9 @@ fn get_mime_type(path: &str) -> HeaderValue {
   )
 }
 
-#[cfg(feature = "public_resources_caching")]
+#[cfg(any(feature = "client_resources_caching", feature = "client_resources_packing"))]
 async fn get_response_data(path: String, req: Request<Incoming>) -> HttpResponse {
-  let cache = PUBLIC_RESOURCES_CACHE.lock().await;
+  let cache = CLIENT_RESOURCES.lock().await;
 
   if let Some(resource_cache) = cache.get(&path) {
     if let Some(client_hash) = req.headers().get(IF_NONE_MATCH) {
@@ -149,9 +249,9 @@ async fn get_response_data(path: String, req: Request<Incoming>) -> HttpResponse
   status_response(StatusCode::NOT_FOUND)
 }
 
-#[cfg(not(feature = "public_resources_caching"))]
+#[cfg(not(any(feature = "client_resources_caching", feature = "client_resources_packing")))]
 async fn get_response_data(path: String, _: Request<Incoming>) -> HttpResponse {
-  let full_path = format!("{}{MAIN_SEPARATOR}{path}", SETTINGS.public_resources_path);
+  let full_path = format!("{}{SEP}{path}", SETTINGS.client_resources_path);
 
   match read(&full_path).await {
     Ok(content) => {

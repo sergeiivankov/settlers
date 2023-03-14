@@ -6,8 +6,8 @@
 # Server listening address
 bind_addr = "127.0.0.1:80"
 
-# Path to public resources directory, absolute or relative from run directory
-public_resources_path = "../client/dist"
+# Path to client resources directory, absolute or relative from run directory
+# client_resources_path = "../client/dist"
 
 # Database connection
 [database]

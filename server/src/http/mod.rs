@@ -27,10 +27,10 @@ use self::{
   ws::ws
 };
 
-#[cfg(feature = "public_resources_caching")]
+#[cfg(any(feature = "client_resources_caching", feature = "client_resources_packing"))]
 use hyper::header::ACCEPT_ENCODING;
-#[cfg(feature = "public_resources_caching")]
-use self::{ helpers::header_list_contains, serve::PUBLIC_RESOURCES_CACHE };
+#[cfg(any(feature = "client_resources_caching", feature = "client_resources_packing"))]
+use self::{ helpers::header_list_contains, serve::CLIENT_RESOURCES };
 
 #[cfg(feature = "secure_server")]
 use rustls_pemfile::{ certs, rsa_private_keys };
@@ -113,7 +113,7 @@ async fn handle_connection(
 
   match section {
     "public" => {
-      #[cfg(feature = "public_resources_caching")]
+      #[cfg(any(feature = "client_resources_caching", feature = "client_resources_packing"))]
       {
         let headers = req.headers();
         if !header_list_contains(headers, &ACCEPT_ENCODING, "gzip") {
@@ -281,8 +281,8 @@ pub async fn start(communicator: Arc<Mutex<Communicator>>, stop_receiver: Receiv
   initialize(&HEADER_VALUES);
   initialize(&MIME_TYPES);
   initialize(&ROUTE_HANDLERS);
-  #[cfg(feature = "public_resources_caching")]
-  initialize(&PUBLIC_RESOURCES_CACHE);
+  #[cfg(any(feature = "client_resources_caching", feature = "client_resources_packing"))]
+  initialize(&CLIENT_RESOURCES);
 
   run(listener, Service { communicator }, additional_acceptor, stop_receiver).await;
 

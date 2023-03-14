@@ -12,7 +12,9 @@ TODO:
 
 - `db_sqlite` - using SQLite database for store data
 
-- `public_resources_caching` - enable public resources files strong caching, it means that if public resource added, updated or deleted, server restart requred to build new cache
+- `client_resources_caching` - enable client resources files strong caching, it means that if client resource added, updated or deleted, server restart requred to build new cache
+
+- `client_resources_packing` - enable client resources files packing to binary
 
 - `secure_server` - enable HTTPS server, see `.env.example` for required parameters
 

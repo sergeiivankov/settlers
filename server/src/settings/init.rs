@@ -4,7 +4,8 @@ use lazy_static::{ lazy_static, initialize };
 use log::{ debug, info };
 use serde_path_to_error::deserialize;
 use std::{
-  env::current_dir, fs::metadata, io::{ Error, ErrorKind }, path::{ MAIN_SEPARATOR, Path, PathBuf }
+  env::current_dir, fs::metadata, io::{ Error, ErrorKind },
+  path::{ MAIN_SEPARATOR as SEP, Path, PathBuf }
 };
 use crate::helpers::exit_with_error;
 use super::structs::Settings;
@@ -67,6 +68,7 @@ fn try_add_file_source(
   builder.add_source(File::with_name(path_str))
 }
 
+#[cfg(not(feature = "client_resources_packing"))]
 fn prepare_check_path(path_string: &String, must_be_file: bool) -> String {
   let mut path = PathBuf::from(&path_string);
 
@@ -103,8 +105,9 @@ fn default(settings: &mut Settings) {
   settings.database.max_lifetime = settings.database.max_lifetime.or(Some(10));
 }
 
+#[cfg(not(feature = "client_resources_packing"))]
 fn check(settings: &mut Settings) {
-  settings.public_resources_path = prepare_check_path(&settings.public_resources_path, false);
+  settings.client_resources_path = prepare_check_path(&settings.client_resources_path, false);
 
   #[cfg(feature = "secure_server")]
   (settings.secure_server.cert_path = prepare_check_path(&settings.secure_server.cert_path, true));
@@ -122,7 +125,7 @@ pub fn init() -> Settings {
   (builder = try_add_file_source(builder, PathBuf::from("/etc/settlers/settlers.toml"), true));
 
   if let Some(directory) = config_dir() {
-    let path = directory.join(format!("settlers{MAIN_SEPARATOR}settlers.toml"));
+    let path = directory.join(format!("settlers{SEP}settlers.toml"));
     builder = try_add_file_source(builder, path, true);
   }
 
@@ -148,6 +151,8 @@ pub fn init() -> Settings {
   });
 
   default(&mut settings);
+
+  #[cfg(not(feature = "client_resources_packing"))]
   check(&mut settings);
 
   settings

@@ -23,7 +23,8 @@ pub struct SecureServer {
 pub struct Settings {
   pub log: Option<String>,
   pub bind_addr: SocketAddr,
-  pub public_resources_path: String,
+  #[cfg(not(feature = "client_resources_packing"))]
+  pub client_resources_path: String,
   pub database: Database,
   #[cfg(feature = "secure_server")]
   pub secure_server: SecureServer

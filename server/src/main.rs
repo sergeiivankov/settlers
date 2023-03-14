@@ -5,10 +5,13 @@
 #![deny(clippy::nursery)]
 #![deny(clippy::cargo)]
 
-// Project will not publiched on crates.io, so no need for fields "keywords" and "categories"
+// Project will not published on crates.io, so no need for fields "keywords" and "categories"
 #![allow(clippy::cargo_common_metadata)]
 
 // TODO: design project repository
+
+#[cfg(all(feature = "client_resources_caching", feature = "client_resources_packing"))]
+compile_error!("Features `client_resources_...` cannot be enabled at the same time");
 
 #[cfg(not(any(
   feature = "db_mysql",
