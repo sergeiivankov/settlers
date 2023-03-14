@@ -51,6 +51,7 @@ walkdir = "2.3.2"
 
 [features]
 default = ["db_sqlite"]
+standalone = ["client_resources_packing", "secure_server"]
 client_resources_caching = ["flate2", "hex", "sha-1", "walkdir"]
 client_resources_packing = ["flate2", "hex", "sha-1", "tar"]
 db_mysql = ["sea-orm/sqlx-mysql", "sea-orm-migration/sqlx-mysql"]

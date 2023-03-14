@@ -18,4 +18,6 @@ TODO:
 
 - `secure_server` - enable HTTPS server, see `.env.example` for required parameters
 
+- `standalone` - combination of `client_resources_packing` and `secure_server` features to work without additional environment
+
 IMPORTANT: using one of `db_...` features is required! By default `db_sqlite` is enabled. To use other database pass to cargo build or run command next flags: "--no-default-features --features settlers-server/db_..."
