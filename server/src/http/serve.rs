@@ -4,12 +4,15 @@ use log::debug;
 use std::{ clone::Clone, path::{ Component, Path, PathBuf } };
 use super::helpers::{ MIME_TYPES, HttpResponse, PreBuiltHeader, header_value, status_response };
 
+// For default and packing
 #[cfg(not(feature = "client_resources_caching"))]
 use std::path::MAIN_SEPARATOR_STR as SEP;
 
+// For default and caching
 #[cfg(not(feature = "client_resources_packing"))]
 use crate::settings::SETTINGS;
 
+// For default only
 #[cfg(not(any(feature = "client_resources_caching", feature = "client_resources_packing")))]
 use log::{ Level, log };
 #[cfg(not(any(feature = "client_resources_caching", feature = "client_resources_packing")))]
@@ -29,6 +32,7 @@ use std::io::Read;
 #[cfg(feature = "client_resources_packing")]
 use tar::{ Archive, EntryType };
 
+// For caching and packing
 #[cfg(any(feature = "client_resources_caching", feature = "client_resources_packing"))]
 use bytes::Bytes;
 #[cfg(any(feature = "client_resources_caching", feature = "client_resources_packing"))]
@@ -47,9 +51,6 @@ use std::{ collections::HashMap, io::Write };
 use tokio::sync::Mutex;
 #[cfg(any(feature = "client_resources_caching", feature = "client_resources_packing"))]
 use crate::helpers::exit_with_error;
-
-#[cfg(feature = "client_resources_packing")]
-const CLIENT_RESOURCES_ARCHIVE: &[u8] = include_bytes!(concat!(env!("OUT_DIR"), "/dist.tar.gz"));
 
 #[cfg(any(feature = "client_resources_caching", feature = "client_resources_packing"))]
 const GZIP_BLACKLIST: &[&str] = &["woff2"];
@@ -135,9 +136,10 @@ lazy_static! {
   // and ready to return response body
   pub static ref CLIENT_RESOURCES: Mutex<HashMap<String, ResourceCache>> = {
     let mut decoder = GzDecoder::new(Vec::new());
-    decoder.write_all(CLIENT_RESOURCES_ARCHIVE).unwrap_or_else(|err| {
-      exit_with_error(&format!("Write gzip decoder error: {err}"))
-    });
+    decoder.write_all(include_bytes!(concat!(env!("OUT_DIR"), "/dist.tar.gz")))
+      .unwrap_or_else(|err| {
+        exit_with_error(&format!("Write gzip decoder error: {err}"))
+      });
     let content = decoder.finish().unwrap_or_else(|err| {
       exit_with_error(&format!("Finish gzip decoder error: {err}"))
     });
