@@ -5,7 +5,7 @@ use std::{ clone::Clone, path::{ Component, Path, PathBuf } };
 use super::helpers::{ MIME_TYPES, HttpResponse, PreBuiltHeader, header_value, status_response };
 
 #[cfg(not(feature = "client_resources_caching"))]
-use std::path::MAIN_SEPARATOR as SEP;
+use std::path::MAIN_SEPARATOR_STR as SEP;
 
 #[cfg(not(feature = "client_resources_packing"))]
 use crate::settings::SETTINGS;
@@ -196,7 +196,7 @@ lazy_static! {
       };
 
       // Archive path use '/' as separator, so need replace it by current platform separator
-      let key = path_string.clone().replace('/', &SEP.to_string());
+      let key = path_string.clone().replace('/', SEP);
 
       cache.insert(key, ResourceCache {
         mime_type: get_mime_type(&path_string),
