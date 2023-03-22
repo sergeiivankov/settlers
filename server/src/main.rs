@@ -28,6 +28,7 @@ mod intermedium;
 mod protos {
   // Disable lints for automatically generated files
   #![allow(unused_imports)]
+  #![allow(clippy::bool_comparison)]
   #![allow(clippy::cast_lossless)]
   #![allow(clippy::deref_addrof)]
   #![allow(clippy::explicit_auto_deref)]
