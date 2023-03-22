@@ -1,5 +1,6 @@
 client/dist
 client/node_modules
+client/src/protos
 server/certs
 server/src/protos
 server/target
