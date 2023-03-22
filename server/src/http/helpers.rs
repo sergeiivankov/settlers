@@ -131,10 +131,7 @@ pub fn deserialize_api_params<'a, R: MessageRead<'a>>(body: &'a Bytes) -> Result
 #[allow(clippy::needless_pass_by_value)]
 pub fn serialize_api_response<W: MessageWrite>(result: W) -> HttpResponse {
   let size = result.get_size();
-
-  let mut bytes = BytesMut::with_capacity(size);
-  // SAFETY: bytes fully overwritten by `size` length before pass into `Response`
-  unsafe { bytes.set_len(size) };
+  let bytes = BytesMut::with_capacity(size);
 
   let mut writer = bytes.writer();
   let write_result = result.write_message(&mut Writer::new(&mut writer));
